@@ -95,7 +95,7 @@ export function MealLogger({ data }: { data: DailyMeals }) {
     <Panel>
       <TopBar>
         <PanelTitle>食事を記録</PanelTitle>
-        <div className="flex items-center gap-3.5">
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           <div className="border-k-line bg-k-raised text-k-fg-sub flex items-center gap-2 rounded-[9px] border px-3.5 py-1.5 font-mono text-[13px]">
             <span className="text-k-accent">◂</span>
             {stampDate(data.date)}

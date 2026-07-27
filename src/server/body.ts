@@ -10,7 +10,7 @@ import {
   CONDITION_LABELS,
 } from "@/schemas/body";
 
-import { loadProfile } from "./profile";
+import { loadProfile } from "./profile.server";
 
 // body_measurements ＋ profiles（身長・目標体重）から体組成ログを組む。
 // BMI / BMR / 筋肉量は測定行に無ければ身長・体脂肪率から近似する（旧固定データと同式）。

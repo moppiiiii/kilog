@@ -14,7 +14,7 @@ import {
   SLOT_META,
 } from "@/schemas/meals";
 
-import { loadProfile } from "./profile";
+import { loadProfile } from "./profile.server";
 
 // meal_entries（当日）を slot でグルーピングし、profiles の目標値と foods の候補を添える。
 // kcal / PFC は記録行が持つ値をそのまま使う（自前で再計算しない）。

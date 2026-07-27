@@ -1,6 +1,5 @@
+import { WeightTrend } from "@/components/dashboard/weight-trend";
 import {
-  AxisLabels,
-  Bars,
   KpiCell,
   KpiStrip,
   Pane,
@@ -12,7 +11,7 @@ import {
 } from "@/components/kirog/console";
 import { SlotBadge } from "@/components/meals/slot-badge";
 import { kg, num, signed, stampDate } from "@/lib/format";
-import { barHeights, macroShare, pct } from "@/lib/metrics";
+import { macroShare, pct } from "@/lib/metrics";
 import type { Dashboard } from "@/schemas/dashboard";
 
 // 1A: 高密度データダッシュボード（Console）。
@@ -75,15 +74,7 @@ export function ConsoleDashboard({ data }: { data: Dashboard }) {
             体重の推移
           </SectionTitle>
 
-          <Bars
-            className="h-[150px]"
-            bars={barHeights(data.weightSeries).map((height) => ({
-              height,
-              className:
-                "bg-[linear-gradient(180deg,#5b8bff,#2f4dad)] rounded-t-[3px]",
-            }))}
-          />
-          <AxisLabels labels={["06/23", "07/07", "07/22"]} />
+          <WeightTrend points={data.weightSeries} />
 
           <div className="mt-6 mb-3.5 text-sm font-bold">
             今日のトレーニング · {data.sessionTitle}
@@ -98,12 +89,25 @@ export function ConsoleDashboard({ data }: { data: Dashboard }) {
                 <span className="flex-1 truncate text-[13px] font-medium">
                   {exercise.name}
                 </span>
-                <span className="text-k-fg-sub font-mono text-[13px]">
-                  {exercise.sets}×{exercise.reps}
-                </span>
-                <span className="text-k-fg-dim w-[74px] text-right font-mono text-[13px]">
-                  {num(exercise.volumeKg)}kg
-                </span>
+                {exercise.isCardio ? (
+                  <span className="text-k-fg-sub font-mono text-[13px]">
+                    {exercise.durationMin != null
+                      ? `${num(exercise.durationMin)}分`
+                      : "—"}
+                    {exercise.distanceKm != null
+                      ? ` · ${exercise.distanceKm}km`
+                      : ""}
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-k-fg-sub font-mono text-[13px]">
+                      {exercise.sets}×{exercise.reps}
+                    </span>
+                    <span className="text-k-fg-dim w-[74px] text-right font-mono text-[13px]">
+                      {num(exercise.volumeKg)}kg
+                    </span>
+                  </>
+                )}
               </div>
             ))}
           </div>

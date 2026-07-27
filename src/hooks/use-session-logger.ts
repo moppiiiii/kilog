@@ -54,6 +54,42 @@ export function useSessionLogger(
 
   const addSetMutation = useMutation({
     mutationFn: (data: AddSetValue) => addSet({ data }),
+    // 追加したセットを即座に該当種目へ反映する（有酸素エントリの「準備中」ちらつきを防ぐ）。
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<WorkoutSession>(queryKey);
+      queryClient.setQueryData<WorkoutSession>(queryKey, (old) =>
+        old
+          ? {
+              ...old,
+              exercises: old.exercises.map((exercise) =>
+                exercise.sessionExerciseId === data.session_exercise_id
+                  ? {
+                      ...exercise,
+                      sets: [
+                        ...exercise.sets,
+                        {
+                          id: data.id,
+                          n: data.set_no,
+                          kg: data.weight_kg,
+                          reps: data.reps,
+                          rpe: data.rpe,
+                          done: data.done,
+                          durationMin: data.duration_min,
+                          distanceKm: data.distance_km,
+                          kcal: data.kcal,
+                        },
+                      ],
+                    }
+                  : exercise,
+              ),
+            }
+          : old,
+      );
+      return { previous };
+    },
+    onError: (_e, _v, context) =>
+      queryClient.setQueryData(queryKey, context?.previous),
     onSettled: invalidate,
   });
 
@@ -76,6 +112,15 @@ export function useSessionLogger(
                         reps: data.reps ?? set.reps,
                         rpe: data.rpe !== undefined ? data.rpe : set.rpe,
                         done: data.done ?? set.done,
+                        durationMin:
+                          data.duration_min !== undefined
+                            ? data.duration_min
+                            : set.durationMin,
+                        distanceKm:
+                          data.distance_km !== undefined
+                            ? data.distance_km
+                            : set.distanceKm,
+                        kcal: data.kcal !== undefined ? data.kcal : set.kcal,
                       }
                     : set,
                 ),

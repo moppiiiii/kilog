@@ -19,6 +19,38 @@ export function sessionVolume(session: WorkoutSession): number {
   );
 }
 
+// ─── 筋トレ / 有酸素 の分離 ──────────────────────────────────────────────
+// 集計・表示で両者を混ぜない。筋トレは重量×レップ、有酸素は時間/距離/カロリー。
+
+export const strengthExercises = (session: WorkoutSession): ExerciseRecord[] =>
+  session.exercises.filter((exercise) => !exercise.isCardio);
+
+export const cardioExercises = (session: WorkoutSession): ExerciseRecord[] =>
+  session.exercises.filter((exercise) => exercise.isCardio);
+
+/** 筋トレのセット数（有酸素エントリを除く）。 */
+export function strengthSetCount(session: WorkoutSession): number {
+  return strengthExercises(session).reduce(
+    (total, exercise) => total + exercise.sets.length,
+    0,
+  );
+}
+
+/** 有酸素の合計（時間・距離・消費カロリー）。 */
+export function cardioTotals(session: WorkoutSession): {
+  minutes: number;
+  km: number;
+  kcal: number;
+} {
+  const sets = cardioExercises(session).flatMap((exercise) => exercise.sets);
+  const km = sets.reduce((total, set) => total + (set.distanceKm ?? 0), 0);
+  return {
+    minutes: sets.reduce((total, set) => total + (set.durationMin ?? 0), 0),
+    km: Math.round(km * 10) / 10,
+    kcal: sets.reduce((total, set) => total + (set.kcal ?? 0), 0),
+  };
+}
+
 export function sessionSetCount(session: WorkoutSession): number {
   return session.exercises.reduce(
     (total, exercise) => total + exercise.sets.length,

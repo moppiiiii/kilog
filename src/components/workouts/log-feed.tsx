@@ -114,7 +114,7 @@ export function LogFeedView({
           </div>
         </Pane>
 
-        <div className="bg-k-panel">
+        <div className="bg-k-panel min-w-0">
           <div className="border-k-line grid grid-cols-2 border-b md:grid-cols-4">
             <SummaryCell label="SESSIONS" value={num(feed.summary.sessions)} />
             <SummaryCell
@@ -131,78 +131,88 @@ export function LogFeedView({
             />
           </div>
 
-          <div className="border-k-line text-k-fg-faint grid grid-cols-[100px_1fr_110px_130px_80px] gap-4 border-b px-6 py-3 font-mono text-[11px] tracking-[0.5px]">
-            <div>DATE</div>
-            <div>RECORD</div>
-            <div>種別</div>
-            <div>VOLUME / KCAL</div>
-            <div className="text-right">前回比</div>
+          {/* 狭い画面では表を横スクロールさせ、ページ全体の横崩れを防ぐ。 */}
+          <div className="overflow-x-auto">
+            <div className="min-w-[600px]">
+              <div className="border-k-line text-k-fg-faint grid grid-cols-[100px_1fr_110px_130px_80px] gap-4 border-b px-6 py-3 font-mono text-[11px] tracking-[0.5px]">
+                <div>DATE</div>
+                <div>RECORD</div>
+                <div>種別</div>
+                <div>VOLUME / KCAL</div>
+                <div className="text-right">前回比</div>
+              </div>
+
+              {rows.map((row) => {
+                const content = (
+                  <>
+                    <div>
+                      <div className="font-mono text-sm">{row.date}</div>
+                      <div className="text-k-fg-faint font-mono text-[11px]">
+                        {row.dow}
+                      </div>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className={cn(
+                          "size-2 shrink-0 rounded-full",
+                          row.kind === "training"
+                            ? "bg-k-success"
+                            : "bg-k-warn",
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">
+                          {row.title}
+                        </div>
+                        <div className="text-k-fg-dim mt-0.5 truncate text-xs">
+                          {row.detail}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <Badge tone={row.kind === "training" ? "accent" : "warn"}>
+                        {row.kind === "training" ? "トレ" : "食事"}
+                      </Badge>
+                    </div>
+                    <div className="text-k-fg-sub font-mono text-sm">
+                      {row.metric}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-right font-mono text-[13px]",
+                        toneClass(row.tone),
+                      )}
+                    >
+                      {row.delta}
+                    </div>
+                  </>
+                );
+
+                const rowClass =
+                  "border-k-line-soft grid grid-cols-[100px_1fr_110px_130px_80px] items-center gap-4 border-b px-6 py-4";
+
+                return row.sessionId ? (
+                  <Link
+                    key={row.id}
+                    to="/history/$sessionId"
+                    params={{ sessionId: row.sessionId }}
+                    className={cn(
+                      rowClass,
+                      "hover:bg-k-raised transition-colors",
+                    )}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={row.id} className={rowClass}>
+                    {content}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          {rows.map((row) => {
-            const content = (
-              <>
-                <div>
-                  <div className="font-mono text-sm">{row.date}</div>
-                  <div className="text-k-fg-faint font-mono text-[11px]">
-                    {row.dow}
-                  </div>
-                </div>
-                <div className="flex min-w-0 items-center gap-3">
-                  <span
-                    className={cn(
-                      "size-2 shrink-0 rounded-full",
-                      row.kind === "training" ? "bg-k-success" : "bg-k-warn",
-                    )}
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {row.title}
-                    </div>
-                    <div className="text-k-fg-dim mt-0.5 truncate text-xs">
-                      {row.detail}
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <Badge tone={row.kind === "training" ? "accent" : "warn"}>
-                    {row.kind === "training" ? "トレ" : "食事"}
-                  </Badge>
-                </div>
-                <div className="text-k-fg-sub font-mono text-sm">
-                  {row.metric}
-                </div>
-                <div
-                  className={cn(
-                    "text-right font-mono text-[13px]",
-                    toneClass(row.tone),
-                  )}
-                >
-                  {row.delta}
-                </div>
-              </>
-            );
-
-            const rowClass =
-              "border-k-line-soft grid grid-cols-[100px_1fr_110px_130px_80px] items-center gap-4 border-b px-6 py-4";
-
-            return row.sessionId ? (
-              <Link
-                key={row.id}
-                to="/history/$sessionId"
-                params={{ sessionId: row.sessionId }}
-                className={cn(rowClass, "hover:bg-k-raised transition-colors")}
-              >
-                {content}
-              </Link>
-            ) : (
-              <div key={row.id} className={rowClass}>
-                {content}
-              </div>
-            );
-          })}
-
-          <div className="flex items-center justify-between px-6 py-4.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4.5">
             <div className="text-k-fg-dim font-mono text-xs">
               {rangeFrom}–{rangeTo} / {num(feed.total)} 件
             </div>

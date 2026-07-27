@@ -20,12 +20,18 @@ export const SetRecordSchema = z.object({
   reps: z.number().int().nonnegative(),
   rpe: z.number().nullable(),
   done: z.boolean(),
+  /** 有酸素の記録（筋トレ行では null）。時間(分)・距離(km)・消費カロリー。 */
+  durationMin: z.number().nullable(),
+  distanceKm: z.number().nullable(),
+  kcal: z.number().int().nullable(),
 });
 export type SetRecord = z.infer<typeof SetRecordSchema>;
 
 export const ExerciseRecordSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /** 有酸素種目か（記録・集計を筋トレと分けるための判別）。 */
+  isCardio: z.boolean(),
   /** session_exercises の行 id。セット追加のとき親として渡す。 */
   sessionExerciseId: z.string().optional(),
   /** 前回のトップセット（例: "70kg×5"）。初回種目は null。 */
@@ -173,6 +179,9 @@ export const WorkoutSetEntitySchema = z.object({
   rpe: z.coerce.number().nullable(),
   rest_sec: z.coerce.number().int().nullable(),
   done: z.boolean(),
+  duration_min: z.coerce.number().nullable(),
+  distance_km: z.coerce.number().nullable(),
+  kcal: z.coerce.number().int().nullable(),
   created_at: z.string(),
 });
 export type WorkoutSetRow = z.infer<typeof WorkoutSetEntitySchema>;
@@ -185,6 +194,9 @@ const SetReadSchema = z.object({
   rpe: z.coerce.number().nullable(),
   rest_sec: z.coerce.number().int().nullable(),
   done: z.boolean(),
+  duration_min: z.coerce.number().nullable(),
+  distance_km: z.coerce.number().nullable(),
+  kcal: z.coerce.number().int().nullable(),
 });
 
 const SessionExerciseEmbedSchema = z.object({
@@ -196,6 +208,7 @@ const SessionExerciseEmbedSchema = z.object({
       id: z.string(),
       name: z.string(),
       part: z.string(),
+      is_cardio: z.boolean(),
     })
     .nullable(),
   sets: z.array(SetReadSchema),
@@ -218,8 +231,9 @@ export type SessionRead = z.infer<typeof SessionReadSchema>;
 export const GET_SESSIONS_QUERY =
   "id, date, title, parts, note, tags, started_at, ended_at, " +
   "exercises:session_exercises(id, position, exercise_id, " +
-  "exercise:exercises(id, name, part), " +
-  "sets:workout_sets(id, set_no, weight_kg, reps, rpe, rest_sec, done))";
+  "exercise:exercises(id, name, part, is_cardio), " +
+  "sets:workout_sets(id, set_no, weight_kg, reps, rpe, rest_sec, done, " +
+  "duration_min, distance_km, kcal))";
 
 /** 種目単位（プログレッション用）。セッション日付とセットを埋め込む。 */
 export const SessionExerciseReadSchema = z.object({
@@ -272,6 +286,10 @@ export const AddSetInput = z.object({
   rpe: z.number().nullable().default(null),
   rest_sec: z.number().int().nullable().default(null),
   done: z.boolean().default(false),
+  // 有酸素用（筋トレ行では null）。
+  duration_min: z.number().nonnegative().nullable().default(null),
+  distance_km: z.number().nonnegative().nullable().default(null),
+  kcal: z.number().int().nonnegative().nullable().default(null),
 });
 
 /** セット更新。`id` で対象を絞り、残りを data として送る。 */
@@ -281,6 +299,9 @@ export const UpdateSetInput = z.object({
   reps: z.number().int().nonnegative().optional(),
   rpe: z.number().nullable().optional(),
   done: z.boolean().optional(),
+  duration_min: z.number().nonnegative().nullable().optional(),
+  distance_km: z.number().nonnegative().nullable().optional(),
+  kcal: z.number().int().nonnegative().nullable().optional(),
 });
 export type UpdateSetInputValue = z.infer<typeof UpdateSetInput>;
 

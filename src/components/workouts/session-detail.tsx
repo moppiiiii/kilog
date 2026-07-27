@@ -13,14 +13,17 @@ import {
   TopBar,
 } from "@/components/kirog/console";
 import { Button } from "@/components/ui/button";
-import { clock, kg, num, signed, stampDate } from "@/lib/format";
+import { kg, num, signed, stampDate } from "@/lib/format";
 import {
+  cardioExercises,
+  cardioTotals,
   exerciseVolume,
   sessionAvgRpe,
   sessionRepCount,
-  sessionSetCount,
   sessionVolume,
   setVolume,
+  strengthExercises,
+  strengthSetCount,
   topSet,
 } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
@@ -29,15 +32,19 @@ import type { WorkoutSession } from "@/schemas/workouts";
 // 4A: 詳細画面。セッションの中身とその日の前回比。
 
 export function SessionDetail({ session }: { session: WorkoutSession }) {
+  const strength = strengthExercises(session);
+  const cardio = cardioExercises(session);
+  const cardioT = cardioTotals(session);
   const volume = sessionVolume(session);
-  const setCount = sessionSetCount(session);
+  const setCount = strengthSetCount(session);
   const repCount = sessionRepCount(session);
   const prev = session.previous;
   const volumeDeltaPct = prev
     ? ((volume - prev.volumeKg) / prev.volumeKg) * 100
     : 0;
   const maxVolume = Math.max(
-    ...session.exercises.map((exercise) => exerciseVolume(exercise)),
+    1,
+    ...strength.map((exercise) => exerciseVolume(exercise)),
   );
 
   return (
@@ -56,7 +63,7 @@ export function SessionDetail({ session }: { session: WorkoutSession }) {
             {stampDate(session.date)} · {session.startTime}–{session.endTime}
           </span>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           <Button
             asChild
             variant="secondary"
@@ -90,7 +97,7 @@ export function SessionDetail({ session }: { session: WorkoutSession }) {
           ) : null}
         </div>
 
-        <div className="bg-k-line grid grid-cols-2 gap-px overflow-hidden rounded-xl md:grid-cols-5">
+        <div className="bg-k-line grid grid-cols-2 gap-px overflow-hidden rounded-xl md:grid-cols-4">
           <DetailKpi
             label="総挙上量"
             value={num(volume)}
@@ -101,20 +108,18 @@ export function SessionDetail({ session }: { session: WorkoutSession }) {
             }
           />
           <DetailKpi
-            label="種目数"
-            value={String(session.exercises.length)}
+            label="筋トレ種目数"
+            value={String(strength.length)}
             foot={`${setCount} セット`}
           />
           <DetailKpi
             label="総レップ"
             value={String(repCount)}
-            foot={`平均 ${(repCount / setCount).toFixed(1)} reps`}
-          />
-          <DetailKpi
-            label="時間"
-            value={String(session.durationMin)}
-            unit="min"
-            foot={`休憩 平均 ${clock(session.avgRestSec)}`}
+            foot={
+              setCount > 0
+                ? `平均 ${(repCount / setCount).toFixed(1)} reps`
+                : "—"
+            }
           />
           <DetailKpi
             label="平均RPE"
@@ -123,83 +128,148 @@ export function SessionDetail({ session }: { session: WorkoutSession }) {
             footClassName="text-k-danger"
           />
         </div>
+
+        {cardio.length > 0 ? (
+          <div className="text-k-fg-sub mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[13px]">
+            <span className="text-k-fg-dim text-[11px]">有酸素</span>
+            <span>{cardio.length} 種目</span>
+            <span>{num(cardioT.minutes)} 分</span>
+            <span>{cardioT.km} km</span>
+            <span className="text-k-warn">{num(cardioT.kcal)} kcal</span>
+          </div>
+        ) : null}
       </div>
 
       <SplitBody className="lg:[grid-template-columns:1.55fr_1fr]">
         <Pane>
-          <SectionTitle>種目ごとの記録</SectionTitle>
-          <div className="flex flex-col gap-3.5">
-            {session.exercises.map((exercise) => {
-              const top = topSet(exercise);
-              return (
-                <Card key={exercise.id}>
-                  <div className="border-k-line flex items-center gap-3 border-b px-[18px] py-3.5">
-                    <span className="flex-1 text-[15px] font-bold">
-                      {exercise.name}
-                    </span>
-                    <span className="text-k-fg-dim font-mono text-xs">
-                      最大{" "}
-                      <span className="text-k-accent">
-                        {top ? `${kg(top.kg)}kg×${top.reps}` : "—"}
-                      </span>
-                    </span>
-                    <span className="text-k-fg-dim font-mono text-xs">
-                      {num(exerciseVolume(exercise))}kg
-                    </span>
-                  </div>
+          {strength.length > 0 ? (
+            <>
+              <SectionTitle>筋トレ</SectionTitle>
+              <div className="flex flex-col gap-3.5">
+                {strength.map((exercise) => {
+                  const top = topSet(exercise);
+                  return (
+                    <Card key={exercise.id}>
+                      <div className="border-k-line flex items-center gap-3 border-b px-[18px] py-3.5">
+                        <span className="flex-1 text-[15px] font-bold">
+                          {exercise.name}
+                        </span>
+                        <span className="text-k-fg-dim font-mono text-xs">
+                          最大{" "}
+                          <span className="text-k-accent">
+                            {top ? `${kg(top.kg)}kg×${top.reps}` : "—"}
+                          </span>
+                        </span>
+                        <span className="text-k-fg-dim font-mono text-xs">
+                          {num(exerciseVolume(exercise))}kg
+                        </span>
+                      </div>
 
-                  <div className="text-k-fg-faint grid grid-cols-[40px_1fr_1fr_1fr_1fr] gap-2.5 px-[18px] py-2.5 font-mono text-[10px]">
-                    <div>SET</div>
-                    <div>KG</div>
-                    <div>REPS</div>
-                    <div>RPE</div>
-                    <div>VOL</div>
-                  </div>
+                      <div className="text-k-fg-faint grid grid-cols-[40px_1fr_1fr_1fr_1fr] gap-2.5 px-[18px] py-2.5 font-mono text-[10px]">
+                        <div>SET</div>
+                        <div>KG</div>
+                        <div>REPS</div>
+                        <div>RPE</div>
+                        <div>VOL</div>
+                      </div>
 
-                  {exercise.sets.map((set) => (
-                    <div
-                      key={set.n}
-                      className="grid grid-cols-[40px_1fr_1fr_1fr_1fr] items-center gap-2.5 px-[18px] pb-2 font-mono text-[13px]"
-                    >
-                      <div className="text-k-fg-dim">{set.n}</div>
-                      <div>{kg(set.kg)}</div>
-                      <div>{set.reps}</div>
-                      <div className="text-k-fg-muted">{set.rpe ?? "—"}</div>
-                      <div className="text-k-fg-dim">{num(setVolume(set))}</div>
-                    </div>
-                  ))}
-                  <div className="h-2" />
-                </Card>
-              );
-            })}
-          </div>
+                      {exercise.sets.map((set) => (
+                        <div
+                          key={set.n}
+                          className="grid grid-cols-[40px_1fr_1fr_1fr_1fr] items-center gap-2.5 px-[18px] pb-2 font-mono text-[13px]"
+                        >
+                          <div className="text-k-fg-dim">{set.n}</div>
+                          <div>{kg(set.kg)}</div>
+                          <div>{set.reps}</div>
+                          <div className="text-k-fg-muted">
+                            {set.rpe ?? "—"}
+                          </div>
+                          <div className="text-k-fg-dim">
+                            {num(setVolume(set))}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="h-2" />
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {cardio.length > 0 ? (
+            <>
+              <SectionTitle className={strength.length > 0 ? "mt-6" : ""}>
+                有酸素
+              </SectionTitle>
+              <div className="flex flex-col gap-3.5">
+                {cardio.map((exercise) => {
+                  const s = exercise.sets[0];
+                  return (
+                    <Card key={exercise.id}>
+                      <div className="border-k-line flex items-center gap-3 border-b px-[18px] py-3.5">
+                        <span className="flex-1 text-[15px] font-bold">
+                          {exercise.name}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2.5 px-[18px] py-3.5">
+                        <CardioStat
+                          label="時間"
+                          value={
+                            s?.durationMin != null ? num(s.durationMin) : "—"
+                          }
+                          unit="分"
+                        />
+                        <CardioStat
+                          label="距離"
+                          value={
+                            s?.distanceKm != null ? String(s.distanceKm) : "—"
+                          }
+                          unit="km"
+                        />
+                        <CardioStat
+                          label="カロリー"
+                          value={s?.kcal != null ? num(s.kcal) : "—"}
+                          unit="kcal"
+                        />
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
         </Pane>
 
         <Pane className="flex flex-col gap-5.5">
-          <div>
-            <SectionTitle>このセッションの挙上量推移</SectionTitle>
-            <Bars
-              className="h-[120px]"
-              gapClassName="gap-2"
-              bars={session.exercises.map((exercise) => ({
-                height: (exerciseVolume(exercise) / maxVolume) * 100,
-                className:
-                  "bg-[linear-gradient(180deg,#5b8bff,#2f4dad)] rounded-t-[4px]",
-              }))}
-            />
-            <div className="mt-2 flex gap-2">
-              {session.exercises.map((exercise) => (
-                <div
-                  key={exercise.id}
-                  className="text-k-fg-faint flex-1 truncate text-center font-mono text-[9px]"
-                >
-                  {exercise.name}
+          {strength.length > 0 ? (
+            <>
+              <div>
+                <SectionTitle>種目別の挙上量（筋トレ）</SectionTitle>
+                <Bars
+                  className="h-[120px]"
+                  gapClassName="gap-2"
+                  bars={strength.map((exercise) => ({
+                    height: (exerciseVolume(exercise) / maxVolume) * 100,
+                    className:
+                      "bg-[linear-gradient(180deg,#5b8bff,#2f4dad)] rounded-t-[4px]",
+                  }))}
+                />
+                <div className="mt-2 flex gap-2">
+                  {strength.map((exercise) => (
+                    <div
+                      key={exercise.id}
+                      className="text-k-fg-faint flex-1 truncate text-center font-mono text-[9px]"
+                    >
+                      {exercise.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          <Divider />
+              <Divider />
+            </>
+          ) : null}
 
           {prev ? (
             <div>
@@ -230,13 +300,6 @@ export function SessionDetail({ session }: { session: WorkoutSession }) {
                     ) - prev.topSetKg,
                   )}kg`}
                   positive
-                />
-                <CompareRow
-                  label="時間"
-                  from={String(prev.durationMin)}
-                  to={String(session.durationMin)}
-                  delta={`${signed(session.durationMin - prev.durationMin, 0)}min`}
-                  positive={session.durationMin <= prev.durationMin}
                 />
               </div>
             </div>
@@ -288,6 +351,26 @@ function DetailKpi({
       </div>
       <div className={cn("text-k-fg-dim mt-0.5 text-[11px]", footClassName)}>
         {foot}
+      </div>
+    </div>
+  );
+}
+
+function CardioStat({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+}) {
+  return (
+    <div>
+      <MonoLabel className="mb-1">{label}</MonoLabel>
+      <div className="font-mono text-lg">
+        {value}
+        <span className="text-k-fg-dim ml-0.5 text-[11px]">{unit}</span>
       </div>
     </div>
   );
