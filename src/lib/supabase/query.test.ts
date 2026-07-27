@@ -1,15 +1,71 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-
-import { GET_TODOS_QUERY, todosSchema } from "@/schemas/todos";
+import * as z from "zod";
 
 import {
   createSupabaseClient,
+  createSupabaseSchema,
+  deleteFrom,
+  insert,
+  select,
   SupabaseQueryError,
   SupabaseValidationError,
+  update,
 } from "./query";
 
 const UUID = "00000000-0000-0000-0000-000000000000";
+
+// ─── フィクスチャ ─────────────────────────────────────────────────────────────
+// エンジンの検証だけが目的なので、実アプリのスキーマには依存させず
+// docs/data-access.md のパターン（entity / response・embed・row 付き match）を
+// 満たす最小のテーブルをここで組み立てる。
+
+const CategorySchema = z.object({ id: z.string().uuid(), name: z.string() });
+
+const TodoEntitySchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  completed: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  category_id: z.string().uuid().nullable(),
+});
+
+const GET_TODOS_QUERY =
+  "id, title, completed, created_at, category:categories(id, name)";
+
+// フラット列は entity から pick、関連は extend、最後に camelCase へ変換。
+const TodoResponseSchema = TodoEntitySchema.pick({
+  id: true,
+  title: true,
+  completed: true,
+  created_at: true,
+})
+  .extend({ category: CategorySchema.nullable() })
+  .transform((row) => ({
+    id: row.id,
+    title: row.title,
+    completed: row.completed,
+    createdAt: row.created_at,
+    category: row.category,
+  }));
+
+const todosSchema = createSupabaseSchema({
+  "@select/todos": select({
+    output: z.array(TodoResponseSchema),
+    select: GET_TODOS_QUERY,
+    row: TodoEntitySchema,
+  }),
+  "@insert/todos": insert({ input: z.object({ title: z.string().min(1) }) }),
+  "@update/todos": update({
+    input: z.object({
+      title: z.string().min(1).optional(),
+      completed: z.boolean().optional(),
+    }),
+    row: TodoEntitySchema,
+  }),
+  "@delete/todos": deleteFrom({ row: TodoEntitySchema }),
+});
 
 type QueryResult = { data: unknown; error: unknown };
 type Call = { method: string; args: unknown[] };

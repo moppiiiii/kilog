@@ -7,7 +7,7 @@ src/
   routes/                 # TanStack Router のファイルルート。薄く保つ（loader + 画面シェルのみ）
   components/
     ui/                   # shadcn/ui プリミティブ（考えずに置く）
-    <feature>/            # 機能ごとの画面パーツ（例: todos/）
+    <feature>/            # 機能ごとの画面パーツ（例: meals/）
   hooks/                  # use-<action>-<resource>.ts（楽観的更新の useMutation など）
   server/                 # serverFn（fetch / mutation 両方）＋ queryOptions。1 リソース 1 ファイル
     <resource>.ts
@@ -41,7 +41,7 @@ src/
 原則:
 
 - **routes は薄く**。loader で fetch を起動し、ロジックは `server/` `hooks/` `components/` から import するだけ。
-- **フォルダは横に並べる**。深い階層は掘らない（`server/todos.ts` であって `server/todos/queries/...` ではない）。
+- **フォルダは横に並べる**。深い階層は掘らない（`server/meals.ts` であって `server/meals/queries/...` ではない）。
 - **環境変数は `env.ts` 経由**。`import.meta.env.X` を直接使わない（例: ページ `<title>` は `env.VITE_APP_TITLE` を `__root.tsx` で参照）。
 
 ## フォーム
@@ -77,23 +77,25 @@ router.tsx
 
 ```
 route loader
-  → queryClient.ensureQueryData(todosQueryOptions())
-    → getTodos()  [serverFn]
-      → $supabaseServer()("@select/todos", { filter })
-        → postgrest → zod 検証 → Result<Todo[]>
-  → コンポーネントは useSuspenseQuery(todosQueryOptions()) で同じキャッシュを購読
+  → queryClient.ensureQueryData(mealsQueryOptions())
+    → getDailyMeals()  [serverFn]
+      → $supabaseServer()("@select/meal_entries", { filter })
+        → postgrest → zod 検証 → Result<MealEntry[]>
+  → コンポーネントは useSuspenseQuery(mealsQueryOptions()) で同じキャッシュを購読
 ```
 
 初回表示はサーバーで fetch 済みのデータがキャッシュに載った状態でレンダリングされる。
+
+> `src/server/` の serverFn は Supabase の生テーブルを取得し、handler 内で view-model へ組み立てて返す。`dashboard` / `reports` / `progression` は複数テーブルを跨いだ集計を handler の JS で行う（`lib/metrics.ts` を共有）。集計結果の型（`queryOptions` と呼び出し側）は変えず、handler の中身だけが DB アクセスになっている。
 
 ### 書き込み（serverFn ＋ 楽観的更新）
 
 ```
 コンポーネント
-  → useToggleTodo().mutate(vars)        [hooks/]
+  → useAddMealEntry().mutate(vars)          [hooks/]
     → onMutate: TanStack Query キャッシュを即時更新（楽観）
-    → mutationFn: toggleTodo({ data })  [serverFn]
-       → $supabaseServer()("@update/todos", { data, match })
+    → mutationFn: addMealEntry({ data })    [serverFn]
+       → $supabaseServer()("@insert/meal_entries", { data })
     → onError: スナップショットへ巻き戻し
     → onSettled: invalidateQueries で再同期
 ```
@@ -106,7 +108,7 @@ route loader
 
 ```
 routes/_authed/route.tsx      # beforeLoad で user を確定 → 未ログインは /login へ redirect
-routes/_authed/dashboard.tsx  # 配下（URL: /dashboard）。context.user は非 null が保証される
+routes/_authed/account.tsx    # 配下（URL: /account）。context.user は非 null が保証される
 routes/login.tsx              # 未ログイン用。ログイン済みなら遷移先へ redirect
 ```
 

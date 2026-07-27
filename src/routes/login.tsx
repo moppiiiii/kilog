@@ -4,7 +4,7 @@ import * as z from "zod";
 import { LoginForm } from "@/components/auth/login-form";
 import { userQueryOptions } from "@/server/auth";
 
-// ガードから渡ってくる遷移先。未指定なら / （Todos ホーム）。
+// ガードから渡ってくる遷移先。未指定なら / （ダッシュボード）。
 const SearchSchema = z.object({
   redirect: z.string().optional().catch(undefined),
 });

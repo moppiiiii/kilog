@@ -28,7 +28,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: env.VITE_APP_TITLE ?? "TanStack Start Starter",
+        title: env.VITE_APP_TITLE ?? "KIROG",
       },
     ],
     links: [

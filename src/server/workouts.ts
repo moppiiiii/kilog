@@ -1,0 +1,423 @@
+import { queryOptions } from "@tanstack/react-query";
+import { notFound } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+
+import { dow, monthDay, num, signedPct, todayIso, toneOf } from "@/lib/format";
+import { $supabaseServer } from "@/lib/supabase/server";
+import type { MealEntryRead } from "@/schemas/meals";
+import {
+  AddSessionExerciseInput,
+  AddSetInput,
+  ConfirmSessionInput,
+  type CopySource,
+  CreateSessionInput,
+  type LogFeed,
+  LogFeedQuery,
+  type LogFeedQueryInput,
+  type LogRow,
+  type RestContext,
+  SessionExerciseIdInput,
+  SessionIdInput,
+  type SessionRead,
+  SetIdInput,
+  UpdateSetInput,
+  type WorkoutSession,
+} from "@/schemas/workouts";
+
+import {
+  buildSession,
+  findPrevious,
+  loadMealEntries,
+  loadSessions,
+  sessionVolumeKg,
+} from "./sessions.server";
+
+// トレーニングの serverFn。DB 読み取り・集計は sessions.server.ts に寄せ、
+// ここは view-model への整形と serverFn / queryOptions だけを持つ（auth.ts と同じ形）。
+
+const LOG_PAGE_SIZE = 10;
+
+/** iso 日付（YYYY-MM-DD）に日数を足し引きする。UTC 基準で桁だけ動かす純計算。 */
+function addDaysIso(iso: string, delta: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 期間フィルタの開始日（この日以降を残す）。all は無制限。今日から遡るローリング窓。 */
+function periodStartIso(period: LogFeedQueryInput["period"]): string | null {
+  if (period === "all") return null;
+  const days = period === "week" ? 7 : period === "month" ? 30 : 90;
+  return addDaysIso(todayIso(), -(days - 1));
+}
+
+const EMPTY_SESSION: WorkoutSession = {
+  id: "",
+  date: todayIso(),
+  title: "セッションなし",
+  parts: [],
+  startTime: "",
+  endTime: "",
+  durationMin: 0,
+  avgRestSec: 0,
+  note: "",
+  tags: [],
+  personalBest: false,
+  exercises: [],
+  previous: null,
+};
+
+/**
+ * 記録中のセッション＝当日の未確定（ended_at が null）セッション。無ければ空（id=""）。
+ * 確定すると対象外になり開始画面へ戻るので、同日に複数セッションを開始できる。
+ * loadSessions は date → started_at の降順なので find で最新の未確定を拾う。
+ */
+export const getActiveSession = createServerFn().handler(
+  async (): Promise<WorkoutSession> => {
+    const all = await loadSessions();
+    const today = todayIso();
+    const active = all.find(
+      (session) => session.date === today && session.ended_at === null,
+    );
+    if (!active) return EMPTY_SESSION;
+    return buildSession(active, findPrevious(all, active));
+  },
+);
+
+export const activeSessionQueryOptions = () =>
+  queryOptions({
+    queryKey: ["workouts", "active"],
+    queryFn: () => getActiveSession(),
+  });
+
+export const getWorkoutSession = createServerFn()
+  .validator(SessionIdInput)
+  .handler(async ({ data }): Promise<WorkoutSession> => {
+    const all = await loadSessions();
+    const session = all.find((candidate) => candidate.id === data.id);
+    if (!session) throw notFound();
+    return buildSession(session, findPrevious(all, session));
+  });
+
+export const workoutSessionQueryOptions = (id: string) =>
+  queryOptions({
+    queryKey: ["workouts", "session", id],
+    queryFn: () => getWorkoutSession({ data: { id } }),
+  });
+
+// ─── ログフィード（トレーニング＋食事の混在時系列） ──────────────────────────
+
+function trainingRow(read: SessionRead, previous: SessionRead | null): LogRow {
+  const volume = sessionVolumeKg(read);
+  const detail = `${read.exercises
+    .map((exercise) => exercise.exercise?.name ?? exercise.exercise_id)
+    .join("・")} / ${read.exercises.length}種目`;
+  const deltaPct =
+    previous && sessionVolumeKg(previous) > 0
+      ? ((volume - sessionVolumeKg(previous)) / sessionVolumeKg(previous)) * 100
+      : null;
+  return {
+    id: `t-${read.id}`,
+    date: monthDay(read.date),
+    dow: dow(read.date),
+    kind: "training",
+    title: read.title,
+    detail,
+    metric: `${num(volume)} kg`,
+    delta: deltaPct === null ? "—" : signedPct(deltaPct),
+    tone: deltaPct === null ? "flat" : toneOf(deltaPct),
+    sessionId: read.id,
+  };
+}
+
+function mealRow(date: string, entries: MealEntryRead[]): LogRow {
+  const kcal = entries.reduce((sum, entry) => sum + entry.kcal, 0);
+  const p = Math.round(entries.reduce((s, e) => s + e.protein_g, 0));
+  const f = Math.round(entries.reduce((s, e) => s + e.fat_g, 0));
+  const c = Math.round(entries.reduce((s, e) => s + e.carb_g, 0));
+  return {
+    id: `m-${date}`,
+    date: monthDay(date),
+    dow: dow(date),
+    kind: "meal",
+    title: `1日の食事 ${entries.length}品`,
+    detail: `P${p} · F${f} · C${c}`,
+    metric: `${num(kcal)} kcal`,
+    delta: "—",
+    tone: "flat",
+    sessionId: null,
+  };
+}
+
+/** 一覧の 1 行を iso 日付付きで持つ中間表現（並び替え・期間フィルタ用）。 */
+type FeedItem = { iso: string; kind: LogRow["kind"]; row: LogRow };
+
+export const getLogFeed = createServerFn()
+  .validator(LogFeedQuery)
+  .handler(async ({ data }): Promise<LogFeed> => {
+    const { kind, period, page } = data;
+    const sessions = await loadSessions();
+    const entries = await loadMealEntries();
+
+    // 食事は日付ごとに 1 行へまとめる。
+    const mealsByDate = new Map<string, MealEntryRead[]>();
+    for (const entry of entries) {
+      const list = mealsByDate.get(entry.date) ?? [];
+      list.push(entry);
+      mealsByDate.set(entry.date, list);
+    }
+
+    const items: FeedItem[] = [
+      ...sessions.map((session) => ({
+        iso: session.date,
+        kind: "training" as const,
+        row: trainingRow(session, findPrevious(sessions, session)),
+      })),
+      ...[...mealsByDate.entries()].map(([date, list]) => ({
+        iso: date,
+        kind: "meal" as const,
+        row: mealRow(date, list),
+      })),
+    ];
+
+    // 日付の新しい順にマージ（同日はトレーニングを先に）。iso で比較して年跨ぎも正しく。
+    items.sort((a, b) => {
+      if (a.iso === b.iso) return a.kind === "training" ? -1 : 1;
+      return a.iso < b.iso ? 1 : -1;
+    });
+
+    // 期間フィルタ → 種別ごとの件数（サイドバー用。種別選択には依存させない）。
+    const from = periodStartIso(period);
+    const inPeriod = from ? items.filter((item) => item.iso >= from) : items;
+    const counts = {
+      all: inPeriod.length,
+      training: inPeriod.filter((item) => item.kind === "training").length,
+      meal: inPeriod.filter((item) => item.kind === "meal").length,
+    };
+
+    // 種別フィルタ → ページング。total は現在の絞り込み後の件数。
+    const filtered =
+      kind === "all" ? inPeriod : inPeriod.filter((item) => item.kind === kind);
+    const total = filtered.length;
+    const pageCount = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
+    const safePage = Math.min(Math.max(1, page), pageCount);
+    const start = (safePage - 1) * LOG_PAGE_SIZE;
+    const rows = filtered
+      .slice(start, start + LOG_PAGE_SIZE)
+      .map((item) => item.row);
+
+    // サマリー・部位は期間内で集計する（種別・ページには依存させない）。
+    const periodSessions = from
+      ? sessions.filter((session) => session.date >= from)
+      : sessions;
+    const totalVolume = periodSessions.reduce(
+      (sum, session) => sum + sessionVolumeKg(session),
+      0,
+    );
+    const periodMealKcals = [...mealsByDate.entries()]
+      .filter(([date]) => !from || date >= from)
+      .map(([, list]) => list.reduce((sum, entry) => sum + entry.kcal, 0));
+    const avgKcal = periodMealKcals.length
+      ? Math.round(
+          periodMealKcals.reduce((s, k) => s + k, 0) / periodMealKcals.length,
+        )
+      : 0;
+
+    const parts = [
+      ...new Set(
+        periodSessions.flatMap((session) =>
+          session.exercises.map((exercise) => exercise.exercise?.part ?? ""),
+        ),
+      ),
+    ].filter(Boolean);
+
+    return {
+      rows,
+      total,
+      page: safePage,
+      pageSize: LOG_PAGE_SIZE,
+      counts,
+      summary: {
+        sessions: counts.training,
+        volumeTons: Math.round((totalVolume / 1000) * 10) / 10,
+        avgKcal,
+        weightDeltaKg: 0,
+      },
+      parts,
+    };
+  });
+
+export const logFeedQueryOptions = (query: LogFeedQueryInput) =>
+  queryOptions({
+    queryKey: ["workouts", "feed", query],
+    queryFn: () => getLogFeed({ data: query }),
+  });
+
+// ─── 前回コピー（8A）のコピー元候補 ─────────────────────────────────────────
+
+export const getCopySources = createServerFn().handler(
+  async (): Promise<CopySource[]> => {
+    const sessions = await loadSessions();
+    return sessions.slice(0, 6).map((session) => ({
+      id: session.id,
+      name: session.title,
+      date: session.date,
+      exerciseCount: session.exercises.length,
+      volumeKg: sessionVolumeKg(session),
+    }));
+  },
+);
+
+export const copySourcesQueryOptions = () =>
+  queryOptions({
+    queryKey: ["workouts", "copy-sources"],
+    queryFn: () => getCopySources(),
+  });
+
+// ─── 休憩タイマー（9A）が必要とするセッション文脈 ────────────────────────────
+
+const EMPTY_REST: RestContext = {
+  sessionTitle: "セッションなし",
+  elapsedSec: 0,
+  exerciseName: "",
+  setNo: 0,
+  setTotal: 0,
+  targetKg: 0,
+  targetReps: 0,
+  recommendedRestSec: [120, 180],
+  doneSets: [],
+};
+
+export const getRestContext = createServerFn().handler(
+  async (): Promise<RestContext> => {
+    const all = await loadSessions();
+    const active = all[0];
+    if (!active) return EMPTY_REST;
+    const session = buildSession(active, findPrevious(all, active));
+
+    // 未完了のセットがある種目を「進行中」とみなす。無ければ最後の種目。
+    const current =
+      session.exercises.find((exercise) =>
+        exercise.sets.some((set) => !set.done),
+      ) ?? session.exercises.at(-1);
+    if (!current) return { ...EMPTY_REST, sessionTitle: session.title };
+
+    const nextSet =
+      current.sets.find((set) => !set.done) ?? current.sets.at(-1);
+    const doneSets = current.sets.filter((set) => set.done);
+    const elapsedSec = active.started_at
+      ? Math.max(
+          0,
+          Math.round(
+            (Date.now() - new Date(active.started_at).getTime()) / 1000,
+          ),
+        )
+      : 0;
+
+    return {
+      sessionTitle: session.title,
+      elapsedSec,
+      exerciseName: current.name,
+      setNo: nextSet?.n ?? current.sets.length,
+      setTotal: current.sets.length,
+      targetKg: nextSet?.kg ?? 0,
+      targetReps: nextSet?.reps ?? 0,
+      recommendedRestSec: [120, 180],
+      doneSets,
+    };
+  },
+);
+
+export const restContextQueryOptions = () =>
+  queryOptions({
+    queryKey: ["workouts", "rest"],
+    queryFn: () => getRestContext(),
+  });
+
+// ─── 記録の書き込み（mutation） ──────────────────────────────────────────────
+// 子行の id はクライアント生成（RETURNING なしのため）。検証は schemas/ の zod を共有。
+
+/** 当日セッションを作成する。id は呼び出し側で uuid 生成して渡す。 */
+export const createSession = createServerFn({ method: "POST" })
+  .validator(CreateSessionInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@insert/workout_sessions", { data });
+    if (result.isErr()) throw result.error;
+  });
+
+/** セッションに種目を追加する。 */
+export const addSessionExercise = createServerFn({ method: "POST" })
+  .validator(AddSessionExerciseInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@insert/session_exercises", { data });
+    if (result.isErr()) throw result.error;
+  });
+
+/** 種目にセットを追加する。 */
+export const addSet = createServerFn({ method: "POST" })
+  .validator(AddSetInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@insert/workout_sets", { data });
+    if (result.isErr()) throw result.error;
+  });
+
+/** セット値（kg / reps / rpe / done）を更新する。 */
+export const updateSet = createServerFn({ method: "POST" })
+  .validator(UpdateSetInput)
+  .handler(async ({ data }) => {
+    const { id, ...rest } = data;
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@update/workout_sets", {
+      data: rest,
+      match: { id },
+    });
+    if (result.isErr()) throw result.error;
+  });
+
+/** セットを削除する。 */
+export const removeSet = createServerFn({ method: "POST" })
+  .validator(SetIdInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@delete/workout_sets", {
+      match: { id: data.id },
+    });
+    if (result.isErr()) throw result.error;
+  });
+
+/** 記録を確定する（ended_at をセット）。 */
+export const confirmSession = createServerFn({ method: "POST" })
+  .validator(ConfirmSessionInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@update/workout_sessions", {
+      data: { ended_at: data.ended_at },
+      match: { id: data.id },
+    });
+    if (result.isErr()) throw result.error;
+  });
+
+/** 種目（session_exercises 行）を削除する。子のセットは FK の cascade で消える想定。 */
+export const removeSessionExercise = createServerFn({ method: "POST" })
+  .validator(SessionExerciseIdInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@delete/session_exercises", {
+      match: { id: data.id },
+    });
+    if (result.isErr()) throw result.error;
+  });
+
+/** セッションを丸ごと削除する。子の種目・セットは FK の cascade で消える想定。 */
+export const removeSession = createServerFn({ method: "POST" })
+  .validator(SessionIdInput)
+  .handler(async ({ data }) => {
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@delete/workout_sessions", {
+      match: { id: data.id },
+    });
+    if (result.isErr()) throw result.error;
+  });
