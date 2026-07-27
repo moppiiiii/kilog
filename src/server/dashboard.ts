@@ -10,7 +10,7 @@ import {
 } from "@/schemas/dashboard";
 import { MealSlot, type MealSlotValue } from "@/schemas/meals";
 
-import { loadProfile } from "./profile";
+import { loadProfile } from "./profile.server";
 import { loadSessions } from "./sessions.server";
 
 // 当日サマリー。profiles / body_measurements / meal_entries / workout_sessions を
@@ -31,7 +31,10 @@ export const getDashboard = createServerFn().handler(
       })
     ).unwrapOr([]);
     const ordered = [...measurements].reverse();
-    const weightSeries = ordered.map((row) => row.weight_kg);
+    const weightSeries = ordered.map((row) => ({
+      date: row.date,
+      weightKg: row.weight_kg,
+    }));
     const weightKg = measurements[0]?.weight_kg ?? 0;
     const weightDeltaKg =
       measurements[1] != null
@@ -92,14 +95,19 @@ export const getDashboard = createServerFn().handler(
             best === null || set.weight_kg > best.weight_kg ? set : best,
           null,
         );
+        const isCardio = exercise.exercise?.is_cardio ?? false;
+        const first = exercise.sets[0];
         return {
           name: exercise.exercise?.name ?? exercise.exercise_id,
+          isCardio,
           sets: exercise.sets.length,
           reps: top?.reps ?? 0,
           volumeKg: exercise.sets.reduce(
             (sum, set) => sum + set.weight_kg * set.reps,
             0,
           ),
+          durationMin: isCardio ? (first?.duration_min ?? null) : null,
+          distanceKm: isCardio ? (first?.distance_km ?? null) : null,
         };
       },
     );

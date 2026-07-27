@@ -14,7 +14,7 @@ import {
   type Report as ReportType,
 } from "@/schemas/reports";
 
-import { loadProfile } from "./profile";
+import { loadProfile } from "./profile.server";
 import { loadSessions, sessionVolumeKg } from "./sessions.server";
 
 // 期間レポート（7A）。range（週/月/年）で対象ウィンドウを決めて集計する。

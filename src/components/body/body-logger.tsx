@@ -26,7 +26,16 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
 export function BodyLogger({ data }: { data: BodyLog }) {
   const { latest, previous } = data;
   const saveBody = useSaveBodyMeasurement();
-  const [weight, setWeight] = useState(() => latest.weightKg || 70);
+  // 入力欄は文字列で保持（小数の途中入力を壊さない）。数値は保存・差分用に派生させる。
+  const [weightText, setWeightText] = useState(() =>
+    String(latest.weightKg || 70),
+  );
+  // 体脂肪率・筋肉量は未入力なら空欄で始める（サーバ側の推定値を実測値のように埋めない）。
+  const [bodyFatText, setBodyFatText] = useState("");
+  const [muscleText, setMuscleText] = useState("");
+  const weight = round1(Number(weightText) || 0);
+  const bodyFat = round1(Number(bodyFatText) || 0);
+  const muscle = round1(Number(muscleText) || 0);
   const [conditionsOn, setConditionsOn] = useState<Set<string>>(
     () =>
       new Set(
@@ -47,8 +56,8 @@ export function BodyLogger({ data }: { data: BodyLog }) {
     saveBody.mutate({
       date: todayIso(),
       weight_kg: weight,
-      body_fat_pct: null,
-      muscle_kg: null,
+      body_fat_pct: bodyFat > 0 ? bodyFat : null,
+      muscle_kg: muscle > 0 ? muscle : null,
       conditions: [...conditionsOn],
       note: "",
     });
@@ -63,34 +72,19 @@ export function BodyLogger({ data }: { data: BodyLog }) {
   const weightChange = monthAgo ? latest.weightKg - monthAgo.weightKg : 0;
   const fatChange = monthAgo ? latest.bodyFatPct - monthAgo.bodyFatPct : 0;
 
+  // BMI・基礎代謝はサーバ算出の派生値なので表示専用（体重/体脂肪を保存すると再計算される）。
   const metrics = [
-    {
-      label: "体脂肪率 · BODY FAT",
-      value: latest.bodyFatPct.toFixed(1),
-      unit: "%",
-      delta: `前回 ${previous.bodyFatPct.toFixed(1)}% ${signed(latest.bodyFatPct - previous.bodyFatPct)}`,
-      good: latest.bodyFatPct <= previous.bodyFatPct,
-    },
-    {
-      label: "筋肉量 · MUSCLE",
-      value: latest.muscleKg.toFixed(1),
-      unit: "kg",
-      delta: `前回 ${previous.muscleKg.toFixed(1)} ${signed(latest.muscleKg - previous.muscleKg)}`,
-      good: latest.muscleKg >= previous.muscleKg,
-    },
     {
       label: "BMI",
       value: latest.bmi.toFixed(1),
       unit: "",
       delta: "標準範囲",
-      good: null,
     },
     {
       label: "基礎代謝 · BMR",
       value: num(latest.bmrKcal),
       unit: "kcal",
       delta: `前回 ${num(previous.bmrKcal)} ${signed(latest.bmrKcal - previous.bmrKcal, 0)}`,
-      good: null,
     },
   ];
 
@@ -98,7 +92,7 @@ export function BodyLogger({ data }: { data: BodyLog }) {
     <Panel>
       <TopBar>
         <PanelTitle>体重・体組成を記録</PanelTitle>
-        <div className="flex items-center gap-3.5">
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           <div className="border-k-line bg-k-raised text-k-fg-sub flex items-center gap-2 rounded-[9px] border px-3.5 py-1.5 font-mono text-[13px]">
             <span className="text-k-accent">◂</span>
             {stampDate(latest.date)} 07:10
@@ -108,7 +102,7 @@ export function BodyLogger({ data }: { data: BodyLog }) {
             size="sm"
             className="rounded-[9px] font-bold"
             onClick={save}
-            disabled={saveBody.isPending}
+            disabled={saveBody.isPending || weight <= 0}
           >
             記録を確定
           </Button>
@@ -121,29 +115,16 @@ export function BodyLogger({ data }: { data: BodyLog }) {
 
           <div className="border-k-accent-edge bg-k-card mb-3.5 rounded-[14px] border p-5.5">
             <MonoLabel className="mb-2.5">体重 · WEIGHT</MonoLabel>
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[46px] leading-none font-bold">
-                {kg(weight)}
-              </span>
+            <div className="flex items-center gap-2.5">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={weightText}
+                onChange={(e) => setWeightText(e.target.value)}
+                aria-label="体重（kg）"
+                className="border-k-line-strong bg-k-well text-k-fg focus:border-k-accent focus:ring-k-accent/30 w-[5.5ch] cursor-text rounded-[12px] border px-2.5 py-1 font-mono text-[46px] leading-none font-bold outline-none focus:ring-2"
+              />
               <span className="text-k-fg-muted text-base">kg</span>
-              <div className="ml-auto flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setWeight((w) => round1(Math.max(0, w - 0.1)))}
-                  aria-label="0.1kg 減らす"
-                  className="bg-k-chip text-k-fg-dim flex size-9 items-center justify-center rounded-[9px] text-lg"
-                >
-                  −
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWeight((w) => round1(w + 0.1))}
-                  aria-label="0.1kg 増やす"
-                  className="bg-k-accent-bg text-k-accent-soft flex size-9 items-center justify-center rounded-[9px] text-lg"
-                >
-                  ＋
-                </button>
-              </div>
             </div>
             <div
               className={cn(
@@ -156,6 +137,23 @@ export function BodyLogger({ data }: { data: BodyLog }) {
           </div>
 
           <div className="mb-3.5 grid grid-cols-2 gap-3">
+            <MeasureInput
+              label="体脂肪率 · BODY FAT"
+              unit="%"
+              text={bodyFatText}
+              onChange={setBodyFatText}
+              previous={previous.bodyFatPct}
+              current={bodyFat}
+              betterWhenLower
+            />
+            <MeasureInput
+              label="筋肉量 · MUSCLE"
+              unit="kg"
+              text={muscleText}
+              onChange={setMuscleText}
+              previous={previous.muscleKg}
+              current={muscle}
+            />
             {metrics.map((metric) => (
               <div
                 key={metric.label}
@@ -172,16 +170,7 @@ export function BodyLogger({ data }: { data: BodyLog }) {
                     </span>
                   ) : null}
                 </div>
-                <div
-                  className={cn(
-                    "mt-1 text-[11px]",
-                    metric.good === null
-                      ? "text-k-fg-dim"
-                      : metric.good
-                        ? "text-k-success"
-                        : "text-k-danger",
-                  )}
-                >
+                <div className="text-k-fg-dim mt-1 text-[11px]">
                   {metric.delta}
                 </div>
               </div>
@@ -313,6 +302,64 @@ export function BodyLogger({ data }: { data: BodyLog }) {
         </Pane>
       </SplitBody>
     </Panel>
+  );
+}
+
+/** 体組成の測定値カード（入力欄つき）。前回比を入力に応じてライブ表示する。 */
+function MeasureInput({
+  label,
+  unit,
+  text,
+  onChange,
+  previous,
+  current,
+  betterWhenLower,
+}: {
+  label: string;
+  unit: string;
+  text: string;
+  onChange: (value: string) => void;
+  previous: number;
+  current: number;
+  betterWhenLower?: boolean;
+}) {
+  const delta = round1(current - previous);
+  const good =
+    current === 0 || current === previous
+      ? null
+      : betterWhenLower
+        ? delta <= 0
+        : delta >= 0;
+  return (
+    <div className="border-k-line bg-k-card rounded-xl border p-4">
+      <MonoLabel className="mb-2">{label}</MonoLabel>
+      <div className="flex items-baseline gap-1.5">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={text}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={label}
+          placeholder="—"
+          className="border-k-line-strong bg-k-well text-k-fg focus:border-k-accent focus:ring-k-accent/30 w-[6ch] cursor-text rounded-lg border px-2 py-0.5 font-mono text-[26px] font-semibold outline-none focus:ring-2"
+        />
+        <span className="text-k-fg-muted text-xs">{unit}</span>
+      </div>
+      <div
+        className={cn(
+          "mt-1 text-[11px]",
+          good === null
+            ? "text-k-fg-dim"
+            : good
+              ? "text-k-success"
+              : "text-k-danger",
+        )}
+      >
+        前回 {previous.toFixed(1)}
+        {unit}
+        {current > 0 ? ` ${signed(delta)}` : ""}
+      </div>
+    </div>
   );
 }
 

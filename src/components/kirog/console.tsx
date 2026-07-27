@@ -72,7 +72,11 @@ export function Pane({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <div className={cn("bg-k-panel p-6", className)}>{children}</div>;
+  // min-w-0: グリッド/フレックスの子として、内容ではなく列幅まで縮めるための定石。
+  // これが無いと狭い画面で中身が親幅を超え、Panel の overflow-hidden で切れて見える。
+  return (
+    <div className={cn("bg-k-panel min-w-0 p-6", className)}>{children}</div>
+  );
 }
 
 /** パネル左上の画面名。1 画面に 1 つ（＝ h1）。 */
@@ -171,7 +175,7 @@ export function KpiCell({
   footClassName?: string;
 }) {
   return (
-    <div className="border-k-line border-r border-b px-6 py-5 last:border-r-0 md:border-b-0">
+    <div className="border-k-line min-w-0 border-r border-b px-6 py-5 last:border-r-0 md:border-b-0">
       <MonoLabel>{label}</MonoLabel>
       <div className="mt-2 flex items-baseline gap-1.5">
         <span

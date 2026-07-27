@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-import { createSupabaseSchema, select } from "@/lib/supabase/query";
+import { createSupabaseSchema, select, update } from "@/lib/supabase/query";
 
 import { MacrosSchema } from "./meals";
 
@@ -58,10 +58,48 @@ export function normalizeProfile(row: ProfileRead | null): Profile {
   };
 }
 
+/**
+ * プロフィール更新の入力契約（身長・目標値）。送信時に数値へ coerce する。
+ * 画面の入力欄は文字列で保持するため、react-form の検証は下の ProfileFormSchema を使う。
+ */
+export const UpdateProfileInput = z.object({
+  height_cm: z.coerce.number().positive(),
+  target_weight_kg: z.coerce.number().positive(),
+  target_kcal: z.coerce.number().int().positive(),
+  target_protein_g: z.coerce.number().int().nonnegative(),
+  target_fat_g: z.coerce.number().int().nonnegative(),
+  target_carb_g: z.coerce.number().int().nonnegative(),
+});
+export type UpdateProfileValue = z.infer<typeof UpdateProfileInput>;
+
+const PositiveNumberString = z
+  .string()
+  .refine((s) => Number(s) > 0, "0 より大きい数値を入力してください");
+const NonNegNumberString = z
+  .string()
+  .refine(
+    (s) => Number.isFinite(Number(s)) && Number(s) >= 0,
+    "0 以上の数値を入力してください",
+  );
+
+/** 設定フォームの検証スキーマ。値は文字列（react-form の値型と一致）。 */
+export const ProfileFormSchema = z.object({
+  height_cm: PositiveNumberString,
+  target_weight_kg: PositiveNumberString,
+  target_kcal: PositiveNumberString,
+  target_protein_g: NonNegNumberString,
+  target_fat_g: NonNegNumberString,
+  target_carb_g: NonNegNumberString,
+});
+
 export const profileSchema = createSupabaseSchema({
   "@select/profiles": select({
     output: z.array(ProfileReadSchema),
     select: GET_PROFILE_QUERY,
+    row: ProfileEntitySchema,
+  }),
+  "@update/profiles": update({
+    input: UpdateProfileInput,
     row: ProfileEntitySchema,
   }),
 });

@@ -106,6 +106,7 @@ export function buildSession(
     .map((exercise) => ({
       id: exercise.exercise_id,
       name: exercise.exercise?.name ?? exercise.exercise_id,
+      isCardio: exercise.exercise?.is_cardio ?? false,
       sessionExerciseId: exercise.id,
       previousTop: previousTops.get(exercise.exercise_id) ?? null,
       sets: [...exercise.sets]
@@ -118,6 +119,9 @@ export function buildSession(
             reps: set.reps,
             rpe: set.rpe,
             done: set.done,
+            durationMin: set.duration_min,
+            distanceKm: set.distance_km,
+            kcal: set.kcal,
           }),
         ),
     }));

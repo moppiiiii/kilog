@@ -6,9 +6,13 @@ import { MacrosSchema, MealSlot } from "./meals";
 
 export const DashboardExerciseSchema = z.object({
   name: z.string(),
+  isCardio: z.boolean(),
   sets: z.number().int(),
   reps: z.number().int(),
   volumeKg: z.number(),
+  /** 有酸素のときの時間(分)・距離(km)。筋トレは null。 */
+  durationMin: z.number().nullable(),
+  distanceKm: z.number().nullable(),
 });
 export type DashboardExercise = z.infer<typeof DashboardExerciseSchema>;
 
@@ -29,8 +33,8 @@ export const DashboardSchema = z.object({
   macros: MacrosSchema,
   targetMacros: MacrosSchema,
   streakDays: z.number().int(),
-  /** 直近 30 日の体重（古い順）。 */
-  weightSeries: z.array(z.number()),
+  /** 直近 30 件の体重測定（古い順）。折れ線グラフ用に日付付き。 */
+  weightSeries: z.array(z.object({ date: z.string(), weightKg: z.number() })),
   sessionTitle: z.string(),
   exercises: z.array(DashboardExerciseSchema),
   meals: z.array(DashboardMealSchema),
