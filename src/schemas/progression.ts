@@ -36,7 +36,7 @@ export const MilestoneSchema = z.object({
 });
 export type Milestone = z.infer<typeof MilestoneSchema>;
 
-export const ProgressionSchema = z.object({
+const ProgressionSchema = z.object({
   exerciseId: z.string(),
   exerciseName: z.string(),
   part: z.string(),

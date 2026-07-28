@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import {
@@ -10,28 +10,63 @@ import {
   TopBar,
 } from "@/components/kirog/console";
 import { Button } from "@/components/ui/button";
+import { useRecordRest } from "@/hooks/use-record-rest";
 import { clock, kg } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { RestContext } from "@/schemas/workouts";
 
 // 9A: 休憩タイマー。セット間インターバルのカウントダウン。
+// カウントダウンは「目安」で、記録するのは実際に休んだ秒数（rested）。
+// 次のセットへ進むときに、直前に完了したセットの rest_sec として書き込む。
 
 const PRESETS = [60, 90, 120, 180];
 /** 残りがこの秒数を切ったらリングを緑に切り替える。 */
 const NEAR_END_SEC = 10;
 
-export function RestTimer({ context }: { context: RestContext }) {
-  const [total, setTotal] = useState(120);
-  const [remaining, setRemaining] = useState(92);
-  const [running, setRunning] = useState(true);
+/** 休憩終了の合図。外部アセットを持たないので WebAudio で短く鳴らす。 */
+function playBeep() {
+  if (typeof AudioContext === "undefined") return;
+  const ctx = new AudioContext();
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.frequency.value = 880;
+  gain.gain.value = 0.08;
+  oscillator.connect(gain).connect(ctx.destination);
+  oscillator.onended = () => void ctx.close();
+  oscillator.start();
+  oscillator.stop(ctx.currentTime + 0.18);
+}
 
+export function RestTimer({ context }: { context: RestContext }) {
+  const navigate = useNavigate();
+  const recordRest = useRecordRest();
+  const [minRest, maxRest] = context.recommendedRestSec;
+  // 目安は推奨休憩の下限から始める（プリセットで上書きできる）。
+  const [total, setTotal] = useState(minRest);
+  const [remaining, setRemaining] = useState(minRest);
+  const [running, setRunning] = useState(true);
+  /** 実際に休んだ秒数。±15/30 やプリセットでは動かさず、記録する値はこれ。 */
+  const [rested, setRested] = useState(0);
+  const [sound, setSound] = useState(true);
+
+  // 1 秒ごとに 1 つ進める。目安の 0 到達もこのティックの中で判定して止め、合図を鳴らす
+  // （remaining を監視するだけの 2 つ目の effect は持たない）。
+  // remaining を依存に置いているので、ティック時点の remaining は常に最新。
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
-      setRemaining((current) => Math.max(0, current - 1));
+    const id = setTimeout(() => {
+      const next = Math.max(0, remaining - 1);
+      setRested((current) => current + 1);
+      setRemaining(next);
+      // このティックで 0 に達したときだけ鳴らす。0 のまま再開した場合は
+      // 実休憩だけ進み、鳴り直さない（休憩自体は続けられる）。
+      if (next === 0 && remaining > 0) {
+        setRunning(false);
+        if (sound) playBeep();
+      }
     }, 1000);
-    return () => clearInterval(id);
-  }, [running]);
+    return () => clearTimeout(id);
+  }, [remaining, running, sound]);
 
   const ratio = total === 0 ? 0 : Math.max(0, Math.min(1, remaining / total));
   const nearEnd = remaining <= NEAR_END_SEC;
@@ -44,7 +79,20 @@ export function RestTimer({ context }: { context: RestContext }) {
     setRunning(true);
   };
 
-  const [minRest, maxRest] = context.recommendedRestSec;
+  /** 直前に完了したセット＝この休憩の持ち主。未完了しか無ければ記録先は無し。 */
+  const lastDoneSetId = context.doneSets.at(-1)?.id ?? null;
+
+  // 記録できたら記録画面へ。失敗時は留まる（理由はトーストに出る）。
+  const finishRest = () => {
+    if (!lastDoneSetId) {
+      void navigate({ to: "/log" });
+      return;
+    }
+    recordRest.mutate(
+      { setId: lastDoneSetId, restSec: rested },
+      { onSuccess: () => void navigate({ to: "/log" }) },
+    );
+  };
 
   return (
     <Panel>
@@ -62,8 +110,14 @@ export function RestTimer({ context }: { context: RestContext }) {
           </span>
         </div>
         <div className="flex items-center gap-2.5">
-          <Button variant="ghost" size="sm" className="bg-k-chip rounded-[9px]">
-            サウンド ON 🔔
+          <Button
+            variant="ghost"
+            size="sm"
+            className="bg-k-chip rounded-[9px]"
+            aria-pressed={sound}
+            onClick={() => setSound((current) => !current)}
+          >
+            サウンド {sound ? "ON 🔔" : "OFF 🔕"}
           </Button>
           <Button
             asChild
@@ -97,6 +151,9 @@ export function RestTimer({ context }: { context: RestContext }) {
               <div className="text-k-fg-dim font-mono text-xs">
                 / {clock(total)} 設定
               </div>
+              <div className="text-k-fg-faint font-mono text-[11px]">
+                実休憩 {clock(rested)}
+              </div>
             </div>
           </div>
 
@@ -121,11 +178,9 @@ export function RestTimer({ context }: { context: RestContext }) {
             <button
               type="button"
               onClick={() => {
-                setRemaining((current) => {
-                  const next = current + 30;
-                  setTotal((currentTotal) => Math.max(currentTotal, next));
-                  return next;
-                });
+                const next = remaining + 30;
+                setRemaining(next);
+                setTotal((currentTotal) => Math.max(currentTotal, next));
               }}
               className="border-k-line-strong bg-k-chip text-k-fg-sub hover:border-k-accent-edge flex size-14 items-center justify-center rounded-2xl border font-mono text-[13px] transition-colors"
             >
@@ -135,14 +190,19 @@ export function RestTimer({ context }: { context: RestContext }) {
 
           <button
             type="button"
-            onClick={() => {
-              setRemaining(0);
-              setRunning(false);
-            }}
-            className="text-k-fg-dim hover:text-k-fg mt-5 text-[13px] transition-colors"
+            disabled={recordRest.isPending}
+            onClick={finishRest}
+            className="text-k-accent hover:text-k-fg mt-5 text-[13px] transition-colors disabled:opacity-50"
           >
-            スキップして次のセットへ →
+            {lastDoneSetId
+              ? `休憩 ${clock(rested)} を記録して次のセットへ →`
+              : "次のセットへ →"}
           </button>
+          {lastDoneSetId ? null : (
+            <p className="text-k-fg-faint mt-1.5 text-[11px]">
+              完了済みのセットが無いため、この休憩は記録されません
+            </p>
+          )}
 
           <div className="mt-7 flex gap-2">
             {PRESETS.map((seconds) => (

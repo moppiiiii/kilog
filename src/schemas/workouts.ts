@@ -40,7 +40,7 @@ export const ExerciseRecordSchema = z.object({
 });
 export type ExerciseRecord = z.infer<typeof ExerciseRecordSchema>;
 
-export const WorkoutSessionSchema = z.object({
+const WorkoutSessionSchema = z.object({
   id: z.string(),
   /** ISO 日付（YYYY-MM-DD）。表示整形は lib/format に寄せる。 */
   date: z.string(),
@@ -68,7 +68,10 @@ export type WorkoutSession = z.infer<typeof WorkoutSessionSchema>;
 /** 一覧（3A）の 1 行。トレーニングと食事が同じ時系列に混ざる。 */
 export const LogRowSchema = z.object({
   id: z.string(),
+  /** 表示用の日付（"07/28"）。 */
   date: z.string(),
+  /** ISO 日付（YYYY-MM-DD）。食事行のリンク先（/meals/$date）に使う。 */
+  iso: z.string(),
   dow: z.string(),
   kind: z.enum(["training", "meal"]),
   title: z.string(),
@@ -81,7 +84,7 @@ export const LogRowSchema = z.object({
 });
 export type LogRow = z.infer<typeof LogRowSchema>;
 
-export const LogFeedSchema = z.object({
+const LogFeedSchema = z.object({
   rows: z.array(LogRowSchema),
   total: z.number().int(),
   page: z.number().int(),
@@ -101,18 +104,26 @@ export const LogFeedSchema = z.object({
 });
 export type LogFeed = z.infer<typeof LogFeedSchema>;
 
-/** 前回コピー（8A）のコピー元候補。 */
-export const CopySourceSchema = z.object({
+/** 前回コピー（8A）のコピー元候補。選ぶとそのまま内容プレビューになる。 */
+const CopySourceSchema = z.object({
   id: z.string(),
   name: z.string(),
   date: z.string(),
   exerciseCount: z.number().int(),
   volumeKg: z.number(),
+  exercises: z.array(ExerciseRecordSchema),
 });
 export type CopySource = z.infer<typeof CopySourceSchema>;
 
+/** 前回コピーの実行入力。bumpKg は全セットの重量に一律加算する。 */
+export const CopySessionInput = z.object({
+  sourceId: z.uuid(),
+  bumpKg: z.number().default(0),
+});
+export type CopySessionValue = z.infer<typeof CopySessionInput>;
+
 /** 休憩タイマー（9A）が必要とするセッション文脈。 */
-export const RestContextSchema = z.object({
+const RestContextSchema = z.object({
   sessionTitle: z.string(),
   elapsedSec: z.number().int(),
   exerciseName: z.string(),
@@ -137,6 +148,10 @@ export const LogFeedQuery = z.object({
     .default("month")
     .catch("month"),
   page: z.number().int().min(1).default(1).catch(1),
+  /** フリーワード検索。空白区切りの AND 検索で、空文字＝絞り込みなし。 */
+  q: z.string().trim().default("").catch(""),
+  /** 部位での絞り込み（例: "胸"）。空文字＝絞り込みなし。トレーニング行だけが持つ。 */
+  part: z.string().trim().default("").catch(""),
 });
 export type LogFeedQueryInput = z.infer<typeof LogFeedQuery>;
 
@@ -145,8 +160,8 @@ export type LogFeedQueryInput = z.infer<typeof LogFeedQuery>;
 // 導出値（volume / 推定 1RM）は workout_sets の生成列と lib/metrics.ts が一致する。
 
 export const WorkoutSessionEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
   date: z.string(),
   title: z.string(),
   parts: z.array(z.string()),
@@ -160,9 +175,9 @@ export const WorkoutSessionEntitySchema = z.object({
 export type WorkoutSessionRow = z.infer<typeof WorkoutSessionEntitySchema>;
 
 export const SessionExerciseEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  session_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
+  session_id: z.uuid(),
   exercise_id: z.string(),
   position: z.coerce.number().int(),
   created_at: z.string(),
@@ -170,9 +185,9 @@ export const SessionExerciseEntitySchema = z.object({
 export type SessionExerciseRow = z.infer<typeof SessionExerciseEntitySchema>;
 
 export const WorkoutSetEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  session_exercise_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
+  session_exercise_id: z.uuid(),
   set_no: z.coerce.number().int(),
   weight_kg: z.coerce.number(),
   reps: z.coerce.number().int(),
@@ -187,7 +202,7 @@ export const WorkoutSetEntitySchema = z.object({
 export type WorkoutSetRow = z.infer<typeof WorkoutSetEntitySchema>;
 
 const SetReadSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   set_no: z.coerce.number().int(),
   weight_kg: z.coerce.number(),
   reps: z.coerce.number().int(),
@@ -200,7 +215,7 @@ const SetReadSchema = z.object({
 });
 
 const SessionExerciseEmbedSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   position: z.coerce.number().int(),
   exercise_id: z.string(),
   exercise: z
@@ -216,7 +231,7 @@ const SessionExerciseEmbedSchema = z.object({
 
 /** セッション 1 件（種目・セットを埋め込み）。一覧・当日・詳細で共有。 */
 export const SessionReadSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   date: z.string(),
   title: z.string(),
   parts: z.array(z.string()),
@@ -237,10 +252,10 @@ export const GET_SESSIONS_QUERY =
 
 /** 種目単位（プログレッション用）。セッション日付とセットを埋め込む。 */
 export const SessionExerciseReadSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   exercise_id: z.string(),
   session: z
-    .object({ id: z.string().uuid(), date: z.string(), title: z.string() })
+    .object({ id: z.uuid(), date: z.string(), title: z.string() })
     .nullable(),
   sets: z.array(SetReadSchema),
 });
@@ -255,7 +270,7 @@ export const GET_SESSION_EXERCISES_QUERY =
 // mutation は RETURNING なし（void）。採番が必要な子行はクライアントで uuid を生成して渡す。
 
 export const CreateSessionInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   date: z.string(),
   title: z.string().min(1),
   parts: z.array(z.string()).default([]),
@@ -270,16 +285,29 @@ export const UpdateSessionInput = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+/** セッションのメタ情報（名前・部位・メモ・タグ）の更新。記録画面から書き込む。 */
+export const UpdateSessionMetaInput = z.object({
+  id: z.uuid(),
+  title: z.string().min(1).optional(),
+  parts: z.array(z.string()).optional(),
+  note: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+export type UpdateSessionMetaValue = z.infer<typeof UpdateSessionMetaInput>;
+
+/** メモ・タグから「PB更新」を立てるためのタグ名（personalBest の判定に使う）。 */
+export const PB_TAG = "PB更新";
+
 export const AddSessionExerciseInput = z.object({
-  id: z.string().uuid(),
-  session_id: z.string().uuid(),
+  id: z.uuid(),
+  session_id: z.uuid(),
   exercise_id: z.string(),
   position: z.number().int().default(0),
 });
 
 export const AddSetInput = z.object({
-  id: z.string().uuid(),
-  session_exercise_id: z.string().uuid(),
+  id: z.uuid(),
+  session_exercise_id: z.uuid(),
   set_no: z.number().int().positive(),
   weight_kg: z.number().nonnegative().default(0),
   reps: z.number().int().nonnegative().default(0),
@@ -294,10 +322,12 @@ export const AddSetInput = z.object({
 
 /** セット更新。`id` で対象を絞り、残りを data として送る。 */
 export const UpdateSetInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   weight_kg: z.number().nonnegative().optional(),
   reps: z.number().int().nonnegative().optional(),
   rpe: z.number().nullable().optional(),
+  /** そのセット後に取った休憩（秒）。休憩タイマー（9A）が書き込む。 */
+  rest_sec: z.number().int().nonnegative().nullable().optional(),
   done: z.boolean().optional(),
   duration_min: z.number().nonnegative().nullable().optional(),
   distance_km: z.number().nonnegative().nullable().optional(),
@@ -307,13 +337,13 @@ export type UpdateSetInputValue = z.infer<typeof UpdateSetInput>;
 
 const UpdateSetData = UpdateSetInput.omit({ id: true });
 
-export const SetIdInput = z.object({ id: z.string().uuid() });
+export const SetIdInput = z.object({ id: z.uuid() });
 
 /** 種目（session_exercises 行）の削除対象。 */
-export const SessionExerciseIdInput = z.object({ id: z.string().uuid() });
+export const SessionExerciseIdInput = z.object({ id: z.uuid() });
 
 export const ConfirmSessionInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   ended_at: z.string(),
 });
 

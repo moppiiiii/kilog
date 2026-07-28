@@ -45,21 +45,23 @@ export const getProgression = createServerFn()
 
     // 1 occurrence = 1 セッションでのこの種目。日付昇順に整列。
     const occurrences: Occurrence[] = seRows
-      .filter((row) => row.session && row.sets.length > 0)
-      .map((row) => {
+      .flatMap((row) => {
+        if (!row.session || row.sets.length === 0) return [];
         const best = row.sets.reduce((top, set) =>
           estimateOneRm(set.weight_kg, set.reps) >
           estimateOneRm(top.weight_kg, top.reps)
             ? set
             : top,
         );
-        return {
-          date: row.session!.date,
-          bestKg: best.weight_kg,
-          bestReps: best.reps,
-          bestRpe: best.rpe ?? 0,
-          oneRm: round1(estimateOneRm(best.weight_kg, best.reps)),
-        };
+        return [
+          {
+            date: row.session.date,
+            bestKg: best.weight_kg,
+            bestReps: best.reps,
+            bestRpe: best.rpe ?? 0,
+            oneRm: round1(estimateOneRm(best.weight_kg, best.reps)),
+          },
+        ];
       })
       .sort((a, b) => (a.date < b.date ? -1 : 1));
 

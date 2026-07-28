@@ -39,7 +39,9 @@ export function BodyLogger({ data }: { data: BodyLog }) {
   const [conditionsOn, setConditionsOn] = useState<Set<string>>(
     () =>
       new Set(
-        data.conditions.filter((c) => c.on).map((condition) => condition.label),
+        data.conditions.flatMap((condition) =>
+          condition.on ? [condition.label] : [],
+        ),
       ),
   );
   const weightDelta = weight - previous.weightKg;
@@ -229,8 +231,9 @@ export function BodyLogger({ data }: { data: BodyLog }) {
           <Bars
             className="h-[150px]"
             gapClassName="gap-1"
-            bars={weightBars.map((height, index) => ({
-              height,
+            bars={data.series.map((point, index) => ({
+              id: point.date,
+              height: weightBars[index] ?? 0,
               className:
                 "bg-[linear-gradient(180deg,#5b8bff,#2f4dad)] opacity-90 rounded-t-[3px]",
               overlay: (

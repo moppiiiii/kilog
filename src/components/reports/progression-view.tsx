@@ -12,10 +12,10 @@ import {
   Panel,
   SectionTitle,
   SegmentedGroup,
-  segmentClass,
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { segmentClass } from "@/components/kirog/segment-class";
 import { Button } from "@/components/ui/button";
 import { kg, monthDay, num, signed } from "@/lib/format";
 import { barHeights } from "@/lib/metrics";
@@ -133,6 +133,7 @@ export function ProgressionView({
           <Bars
             className="h-[180px]"
             bars={progression.series.map((point, index) => ({
+              id: point.date,
               height: heights[index] ?? 0,
               className:
                 index === lastIndex

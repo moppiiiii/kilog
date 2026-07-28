@@ -1,5 +1,6 @@
 import * as z from "zod";
 
+import { WeightPointSchema } from "./body";
 import { MacrosSchema } from "./meals";
 
 // 期間レポート（7A）。集計済みの値を受け取る前提のスキーマ。
@@ -20,7 +21,7 @@ export const PersonalBestSchema = z.object({
 });
 export type PersonalBest = z.infer<typeof PersonalBestSchema>;
 
-export const ReportSchema = z.object({
+const ReportSchema = z.object({
   /** 表示用の期間ラベル（例: "2026年 7月" / "7/21–7/27" / "2026年"）。 */
   periodLabel: z.string(),
   trainingDays: z.number().int(),
@@ -37,7 +38,8 @@ export const ReportSchema = z.object({
   heatmap: z.array(z.number().int().min(0).max(3)),
   muscleVolume: z.array(MuscleVolumeSchema),
   personalBests: z.array(PersonalBestSchema),
-  weightSeries: z.array(z.number()),
+  /** 期間内の体重測定（古い順）。ダッシュボードと同じ折れ線で描くので日付付き。 */
+  weightSeries: z.array(WeightPointSchema),
 });
 export type Report = z.infer<typeof ReportSchema>;
 

@@ -51,13 +51,6 @@ export function cardioTotals(session: WorkoutSession): {
   };
 }
 
-export function sessionSetCount(session: WorkoutSession): number {
-  return session.exercises.reduce(
-    (total, exercise) => total + exercise.sets.length,
-    0,
-  );
-}
-
 export function sessionRepCount(session: WorkoutSession): number {
   return session.exercises.reduce(
     (total, exercise) =>
@@ -67,10 +60,9 @@ export function sessionRepCount(session: WorkoutSession): number {
 }
 
 export function sessionAvgRpe(session: WorkoutSession): number {
-  const rpes = session.exercises
-    .flatMap((exercise) => exercise.sets)
-    .map((set) => set.rpe)
-    .filter((rpe): rpe is number => rpe !== null);
+  const rpes = session.exercises.flatMap((exercise) =>
+    exercise.sets.flatMap((set) => (set.rpe === null ? [] : [set.rpe])),
+  );
   if (rpes.length === 0) return 0;
   return rpes.reduce((sum, rpe) => sum + rpe, 0) / rpes.length;
 }

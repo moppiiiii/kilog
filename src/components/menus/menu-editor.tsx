@@ -1,36 +1,103 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 
 import {
-  Chip,
-  DashedAction,
-  HintCard,
-  MonoLabel,
   Pane,
   Panel,
-  SectionTitle,
   SegmentedGroup,
-  segmentClass,
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { segmentClass } from "@/components/kirog/segment-class";
+import { MenuDetailPane } from "@/components/menus/menu-detail-pane";
+import { MENU_ICONS } from "@/components/menus/menu-icons";
+import { MenuListPane } from "@/components/menus/menu-list-pane";
 import { Button } from "@/components/ui/button";
-import { clock } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import type { WorkoutMenu } from "@/schemas/menus";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useMenuEditor } from "@/hooks/use-menu-editor";
+import type { ExerciseRead } from "@/schemas/exercises";
+import type { MenuKindValue, WorkoutMenu } from "@/schemas/menus";
 
 // 10A: マイメニュー登録。左が登録済み、右が編集フォーム。
+// 編集は即時保存（記録画面と同じ方針）で、まとめて押す「保存」は持たない。
 
-const ICONS = ["🏋️", "💪", "🔥"];
+/** 新規メニューの初期値。作成直後に名前を直せるよう、汎用の名前を入れておく。 */
+const NEW_MENU_NAME = "新しいメニュー";
 
 export function MenuEditor({
   menus,
   kind,
   selected,
+  exercises,
 }: {
   menus: WorkoutMenu[];
-  kind: "training" | "meal";
-  selected: WorkoutMenu;
+  kind: MenuKindValue;
+  /** 編集対象。登録が 1 件も無ければ null（空状態）。 */
+  selected: WorkoutMenu | null;
+  exercises: ExerciseRead[];
 }) {
+  const navigate = useNavigate();
+  const editor = useMenuEditor();
+  const [search, setSearch] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // どれも失敗時は遷移しない（理由はトーストに出る）。
+  const createMenu = () => {
+    const id = crypto.randomUUID();
+    editor.create.mutate(
+      {
+        id,
+        kind,
+        name: NEW_MENU_NAME,
+        icon: MENU_ICONS[0] ?? "🏋️",
+        parts: [],
+        estimated_min: 0,
+        favorite: false,
+        position: menus.length,
+      },
+      {
+        onSuccess: () =>
+          void navigate({ to: "/menus", search: { kind, menu: id } }),
+      },
+    );
+  };
+
+  const removeMenu = () => {
+    if (!selected) return;
+    editor.remove.mutate(selected.id, {
+      onSuccess: () =>
+        void navigate({ to: "/menus", search: { kind, menu: undefined } }),
+    });
+  };
+
+  const startSession = () => {
+    if (!selected) return;
+    editor.start.mutate(
+      { menuId: selected.id },
+      { onSuccess: () => void navigate({ to: "/log" }) },
+    );
+  };
+
+  /** メニュー本体（名前・アイコン・部位タグ）の部分更新。 */
+  const patch = (value: { name?: string; icon?: string; parts?: string[] }) => {
+    if (!selected) return;
+    editor.update.mutate({ id: selected.id, ...value });
+  };
+
+  const addExercise = (exerciseId: string) => {
+    if (!selected) return;
+    editor.addExercise.mutate({
+      id: crypto.randomUUID(),
+      menu_id: selected.id,
+      exercise_id: exerciseId,
+      position: selected.exercises.length,
+      target_sets: 3,
+      target_reps: 10,
+      rest_sec: 90,
+    });
+    setSearch("");
+  };
+
   return (
     <Panel>
       <TopBar>
@@ -58,166 +125,87 @@ export function MenuEditor({
           </SegmentedGroup>
         </div>
         <div className="flex items-center gap-2.5">
-          <Button variant="ghost" size="sm" className="bg-k-chip rounded-[9px]">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="bg-k-chip rounded-[9px]"
+            disabled={editor.create.isPending}
+            onClick={createMenu}
+          >
             ＋ 新規メニュー
           </Button>
-          <Button size="sm" className="rounded-[9px] font-bold">
-            保存
-          </Button>
+          {selected ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-[9px]"
+                disabled={editor.remove.isPending}
+                onClick={() => setConfirmingDelete(true)}
+              >
+                削除
+              </Button>
+              <ConfirmDialog
+                open={confirmingDelete}
+                title={`「${selected.name}」を削除しますか？`}
+                description="このメニューと、登録した種目の既定値が消えます。記録済みのセッションは残ります。"
+                confirmLabel="削除する"
+                onConfirm={() => {
+                  setConfirmingDelete(false);
+                  removeMenu();
+                }}
+                onCancel={() => setConfirmingDelete(false)}
+              />
+              <Button
+                size="sm"
+                className="rounded-[9px] font-bold"
+                disabled={editor.start.isPending}
+                onClick={startSession}
+              >
+                {editor.start.isPending ? "作成中…" : "このメニューで開始 →"}
+              </Button>
+            </>
+          ) : null}
         </div>
       </TopBar>
 
       <SplitBody className="lg:[grid-template-columns:280px_1fr]">
-        <Pane className="p-[22px]">
-          <MonoLabel className="mb-3">登録済み（{menus.length}）</MonoLabel>
-          <div className="flex flex-col gap-2.5">
-            {menus.map((menu) => {
-              const active = menu.id === selected.id;
-              return (
-                <Link
-                  key={menu.id}
-                  to="/menus"
-                  search={{ kind, menu: menu.id }}
-                  className={cn(
-                    "rounded-xl border p-3.5 transition-colors",
-                    active
-                      ? "border-k-accent-edge bg-k-card"
-                      : "border-k-line bg-k-panel hover:border-k-accent-edge",
-                  )}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className={cn(
-                        "flex size-8 items-center justify-center rounded-[9px] text-[15px]",
-                        active ? "bg-k-accent-bg" : "bg-k-chip",
-                      )}
-                    >
-                      {menu.icon}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold">
-                        {menu.name}
-                      </div>
-                      <div className="text-k-fg-dim mt-px text-[11px]">
-                        {menu.summary} · {menu.exercises.length}種目
-                      </div>
-                    </div>
-                    {active ? (
-                      <span className="bg-k-accent size-1.5 rounded-full" />
-                    ) : null}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-          <DashedAction className="mt-3">＋ メニューを追加</DashedAction>
-        </Pane>
+        <MenuListPane
+          menus={menus}
+          kind={kind}
+          selectedId={selected?.id ?? null}
+          onCreate={createMenu}
+        />
 
-        <Pane>
-          <div className="mb-5.5 flex flex-wrap gap-3.5">
-            <div className="min-w-[240px] flex-1">
-              <MonoLabel className="mb-1.5">メニュー名</MonoLabel>
-              <div className="border-k-accent-edge bg-k-raised rounded-[10px] border px-4 py-3 text-base font-semibold">
-                {selected.name}
-              </div>
-            </div>
-            <div className="w-[150px]">
-              <MonoLabel className="mb-1.5">アイコン</MonoLabel>
-              <div className="flex gap-1.5">
-                {ICONS.map((icon) => (
-                  <span
-                    key={icon}
-                    className={cn(
-                      "flex-1 rounded-[10px] border p-3 text-center text-base",
-                      icon === selected.icon
-                        ? "border-k-accent-edge bg-k-accent-bg"
-                        : "border-k-line-strong bg-k-raised opacity-50",
-                    )}
-                  >
-                    {icon}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-5.5 flex flex-wrap items-center gap-2.5">
-            <span className="text-k-fg-dim text-xs">部位タグ</span>
-            <div className="flex flex-wrap gap-1.5">
-              {selected.parts.map((part) => (
-                <Chip key={part} active>
-                  {part}
-                </Chip>
-              ))}
-              <Chip>＋</Chip>
-            </div>
-          </div>
-
-          <SectionTitle
-            right={
-              <span className="text-k-fg-dim font-mono text-xs">
-                {selected.exercises.length}種目 · 目安 {selected.estimatedMin}分
-              </span>
+        {selected ? (
+          <MenuDetailPane
+            menu={selected}
+            exercises={exercises}
+            search={search}
+            onSearchChange={setSearch}
+            onPatch={patch}
+            onAddExercise={addExercise}
+            onUpdateExercise={(id, patchValue) =>
+              editor.updateExercise.mutate({ id, ...patchValue })
             }
-          >
-            種目とデフォルト設定
-          </SectionTitle>
-
-          <div className="flex flex-col gap-2.5">
-            {selected.exercises.map((exercise) => (
-              <div
-                key={exercise.id}
-                className="border-k-line bg-k-card grid grid-cols-[18px_minmax(0,1fr)_64px_64px_62px_22px] items-center gap-2 rounded-xl border px-3.5 py-3"
-              >
-                <span className="text-k-fg-faint text-[15px]">⋮⋮</span>
-                <span className="truncate text-sm font-medium">
-                  {exercise.name}
-                </span>
-                <span className="border-k-line-strong bg-k-well rounded-lg border px-1.5 py-2 text-center font-mono text-[13px]">
-                  {exercise.sets}
-                  <span className="text-k-fg-faint text-[10px]"> set</span>
-                </span>
-                <span className="border-k-line-strong bg-k-well rounded-lg border px-1.5 py-2 text-center font-mono text-[13px]">
-                  {exercise.reps}
-                  <span className="text-k-fg-faint text-[10px]"> rep</span>
-                </span>
-                <span className="border-k-line-strong bg-k-well text-k-fg-sub rounded-lg border px-1.5 py-2 text-center font-mono text-[13px]">
-                  {clock(exercise.restSec)}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`${exercise.name} を外す`}
-                  className="text-k-fg-faint hover:text-k-danger text-center text-sm transition-colors"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-k-line-strong bg-k-raised mt-3.5 flex flex-wrap items-center gap-2.5 rounded-[10px] border px-4 py-3">
-            <span className="text-k-fg-faint">⌕</span>
-            <span className="text-k-fg-faint text-[13px]">
-              種目を検索して追加
-            </span>
-            <span className="text-k-fg-faint ml-auto font-mono text-[11px]">
-              SET / REP / 休憩 を初期値で保存
-            </span>
-          </div>
-
-          <HintCard className="mt-5 flex flex-wrap items-center gap-3">
-            <span className="text-lg">⚡</span>
-            <p className="flex-1 text-[13px] leading-relaxed">
-              このメニューは記録画面の「セッション選択」と「前回コピー」から呼び出せます。
+            onRemoveExercise={(id) => editor.removeExercise.mutate(id)}
+          />
+        ) : (
+          <Pane className="flex flex-col items-center justify-center gap-4 py-16">
+            <p className="text-k-fg-dim text-[13px]">
+              {kind === "training" ? "トレーニング" : "食事"}
+              のメニューがまだありません
             </p>
-            <Link
-              to="/log/copy"
-              className="bg-k-accent-bg text-k-accent-soft rounded-lg px-3.5 py-1.5 text-xs font-semibold"
+            <Button
+              size="sm"
+              className="rounded-[9px] font-bold"
+              disabled={editor.create.isPending}
+              onClick={createMenu}
             >
-              前回コピーで使う
-            </Link>
-          </HintCard>
-        </Pane>
+              ＋ 最初のメニューを作る
+            </Button>
+          </Pane>
+        )}
       </SplitBody>
     </Panel>
   );

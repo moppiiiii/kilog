@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
+import { Toaster } from "@/components/kirog/toaster";
 import { env } from "@/env";
 
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
@@ -49,6 +50,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        {/* 書き込み失敗などの一時通知。全画面共通で 1 度だけ描画する。 */}
+        <Toaster />
         <TanStackDevtools
           config={{
             position: "bottom-right",

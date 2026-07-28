@@ -1,10 +1,11 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { AppHeader } from "@/components/kirog/app-header";
+import { BottomNav } from "@/components/kirog/bottom-nav";
 import { userQueryOptions } from "@/server/auth";
 
 // 認証ガード（pathless レイアウト）。配下ルートは context.user を非 null で使える。
-// 共通ヘッダーもここで 1 度だけ描画し、配下の全画面が同じものを共有する。
+// 共通ヘッダー（と SP のボトムタブ）もここで 1 度だけ描画し、配下の全画面が共有する。
 export const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
     const user = await context.queryClient.ensureQueryData(userQueryOptions());
@@ -22,7 +23,11 @@ function AuthedLayout() {
   return (
     <>
       <AppHeader email={user.email ?? ""} />
-      <Outlet />
+      {/* 固定タブの高さ分だけ下に余白を作り、最終行が隠れないようにする（md 以上は不要）。 */}
+      <div className="pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+        <Outlet />
+      </div>
+      <BottomNav />
     </>
   );
 }

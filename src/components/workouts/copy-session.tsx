@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import {
@@ -10,38 +10,53 @@ import {
   TopBar,
 } from "@/components/kirog/console";
 import { Button } from "@/components/ui/button";
+import { useCopySession } from "@/hooks/use-copy-session";
 import { kg, monthDay, num } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { WorkoutMenu } from "@/schemas/menus";
-import type { CopySource, WorkoutSession } from "@/schemas/workouts";
+import type { CopySource } from "@/schemas/workouts";
 
 // 8A: 前回コピー入力。前回値を初期入力にして、差分だけ直して開始する。
+// 複製は serverFn（copySession）が一括で行い、完了後は記録画面へ送る。
 
 const BUMP_STEPS = [0, 2.5] as const;
 
 export function CopySession({
   sources,
   menus,
-  template,
 }: {
   sources: CopySource[];
   menus: WorkoutMenu[];
-  template: WorkoutSession;
 }) {
+  const navigate = useNavigate();
+  const copy = useCopySession();
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
   const [bump, setBump] = useState<number>(0);
   const selected = sources.find((source) => source.id === sourceId);
+  const exercises = selected?.exercises ?? [];
 
-  const setCount = template.exercises.reduce(
+  const setCount = exercises.reduce(
     (total, exercise) => total + exercise.sets.length,
     0,
   );
-  const targetVolume = template.exercises.reduce(
+  const targetVolume = exercises.reduce(
     (total, exercise) =>
       total +
-      exercise.sets.reduce((sum, set) => sum + (set.kg + bump) * set.reps, 0),
+      exercise.sets.reduce(
+        (sum, set) => sum + Math.max(0, set.kg + bump) * set.reps,
+        0,
+      ),
     0,
   );
+
+  // 失敗時は遷移しない（理由はトーストに出る）。
+  const start = () => {
+    if (!selected) return;
+    copy.mutate(
+      { sourceId: selected.id, bumpKg: bump },
+      { onSuccess: () => void navigate({ to: "/log" }) },
+    );
+  };
 
   return (
     <Panel>
@@ -65,8 +80,13 @@ export function CopySession({
           >
             <Link to="/log">空のセッション</Link>
           </Button>
-          <Button asChild size="sm" className="rounded-[9px] font-bold">
-            <Link to="/log">この内容で開始 →</Link>
+          <Button
+            size="sm"
+            className="rounded-[9px] font-bold"
+            disabled={!selected || copy.isPending}
+            onClick={start}
+          >
+            {copy.isPending ? "作成中…" : "この内容で開始 →"}
           </Button>
         </div>
       </TopBar>
@@ -169,7 +189,7 @@ export function CopySession({
           </div>
 
           <div className="flex flex-col gap-3.5">
-            {template.exercises.map((exercise) => (
+            {exercises.map((exercise) => (
               <Card key={exercise.id}>
                 <div className="border-k-line flex items-center gap-3 border-b px-[18px] py-3.5">
                   <span className="bg-k-accent-bg text-k-accent-soft flex size-6 items-center justify-center rounded-md text-sm">
@@ -188,37 +208,29 @@ export function CopySession({
                   ) : null}
                 </div>
 
-                <div className="text-k-fg-faint grid grid-cols-[40px_1fr_1fr_60px] gap-2.5 px-[18px] py-2.5 font-mono text-[10px]">
+                {/* セット単位の修正は複製後の記録画面で行う。ここは何が入るかの確認だけ。 */}
+                <div className="text-k-fg-faint grid grid-cols-[40px_1fr_1fr] gap-2.5 px-[18px] py-2.5 font-mono text-[10px]">
                   <div>SET</div>
                   <div>KG（コピー）</div>
                   <div>REPS（コピー）</div>
-                  <div className="text-right">調整</div>
                 </div>
 
                 {exercise.sets.map((set) => (
                   <div
                     key={set.n}
-                    className="grid grid-cols-[40px_1fr_1fr_60px] items-center gap-2.5 px-[18px] pb-2"
+                    className="grid grid-cols-[40px_1fr_1fr] items-center gap-2.5 px-[18px] pb-2"
                   >
                     <div className="text-k-fg-dim font-mono text-[13px]">
                       {set.n}
                     </div>
                     <div className="border-k-accent-edge bg-k-well flex items-center gap-2 rounded-lg border px-3 py-2.5 font-mono text-sm">
-                      {kg(set.kg + bump)}
+                      {kg(Math.max(0, set.kg + bump))}
                       <span className="text-k-fg-faint text-[11px]">
                         {bump === 0 ? "前回値" : `+${bump}`}
                       </span>
                     </div>
                     <div className="border-k-accent-edge bg-k-well rounded-lg border px-3 py-2.5 font-mono text-sm">
                       {set.reps}
-                    </div>
-                    <div className="flex justify-end gap-1.5">
-                      <span className="bg-k-chip text-k-fg-dim flex size-6.5 items-center justify-center rounded-[7px] text-sm">
-                        −
-                      </span>
-                      <span className="bg-k-accent-bg text-k-accent-soft flex size-6.5 items-center justify-center rounded-[7px] text-sm">
-                        ＋
-                      </span>
                     </div>
                   </div>
                 ))}
@@ -231,7 +243,7 @@ export function CopySession({
             <div className="flex-1">
               <div className="text-k-fg-dim text-xs">コピーされる内容</div>
               <div className="mt-0.5 text-sm font-semibold">
-                {template.exercises.length}種目 · {setCount}セット · 目標挙上量{" "}
+                {exercises.length}種目 · {setCount}セット · 目標挙上量{" "}
                 {num(targetVolume)}kg
               </div>
             </div>

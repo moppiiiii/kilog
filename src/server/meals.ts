@@ -6,24 +6,27 @@ import { $supabaseServer } from "@/lib/supabase/server";
 import {
   AddMealEntryInput,
   type DailyMeals,
+  DailyMealsQuery,
   type FoodSuggestion,
   type MealGroup,
   MealSlot,
   type MealSlotValue,
   RemoveMealEntryInput,
   SLOT_META,
+  UpdateMealEntryInput,
 } from "@/schemas/meals";
 
 import { loadProfile } from "./profile.server";
 
-// meal_entries（当日）を slot でグルーピングし、profiles の目標値と foods の候補を添える。
-// kcal / PFC は記録行が持つ値をそのまま使う（自前で再計算しない）。
+// meal_entries（指定日・既定は当日）を slot でグルーピングし、profiles の目標値と
+// foods の候補を添える。kcal / PFC は記録行が持つ値をそのまま使う（自前で再計算しない）。
 
-export const getDailyMeals = createServerFn().handler(
-  async (): Promise<DailyMeals> => {
+export const getDailyMeals = createServerFn()
+  .validator(DailyMealsQuery)
+  .handler(async ({ data }): Promise<DailyMeals> => {
     const $supabase = await $supabaseServer();
     const profile = await loadProfile($supabase);
-    const date = todayIso();
+    const date = data.date ?? todayIso();
 
     const entries = (
       await $supabase("@select/meal_entries", {
@@ -40,15 +43,19 @@ export const getDailyMeals = createServerFn().handler(
     const groups: MealGroup[] = MealSlot.options.map((slot: MealSlotValue) => ({
       slot,
       name: SLOT_META[slot].name,
-      items: entries
-        .filter((entry) => entry.slot === slot)
-        .map((entry) => ({
-          id: entry.id,
-          name: entry.name,
-          qty: entry.qty,
-          kcal: entry.kcal,
-          macros: { p: entry.protein_g, f: entry.fat_g, c: entry.carb_g },
-        })),
+      items: entries.flatMap((entry) =>
+        entry.slot === slot
+          ? [
+              {
+                id: entry.id,
+                name: entry.name,
+                qty: entry.qty,
+                kcal: entry.kcal,
+                macros: { p: entry.protein_g, f: entry.fat_g, c: entry.carb_g },
+              },
+            ]
+          : [],
+      ),
     }));
 
     const suggestions: FoodSuggestion[] = suggestionRows.map((food) => ({
@@ -66,13 +73,13 @@ export const getDailyMeals = createServerFn().handler(
       groups,
       suggestions,
     };
-  },
-);
+  });
 
-export const dailyMealsQueryOptions = () =>
+/** date 省略＝当日。キーも "today" のままにして当日の購読・楽観更新を安定させる。 */
+export const dailyMealsQueryOptions = (date?: string) =>
   queryOptions({
-    queryKey: ["meals", "today"],
-    queryFn: () => getDailyMeals(),
+    queryKey: ["meals", date ?? "today"],
+    queryFn: () => getDailyMeals({ data: { date } }),
   });
 
 // ─── 記録の書き込み（mutation） ──────────────────────────────────────────────
@@ -82,6 +89,19 @@ export const addMealEntry = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const $supabase = await $supabaseServer();
     const result = await $supabase("@insert/meal_entries", { data });
+    if (result.isErr()) throw result.error;
+  });
+
+/** 記録済みの 1 品を修正する（量・kcal・PFC の打ち間違い直し）。 */
+export const updateMealEntry = createServerFn({ method: "POST" })
+  .validator(UpdateMealEntryInput)
+  .handler(async ({ data }) => {
+    const { id, ...rest } = data;
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@update/meal_entries", {
+      data: rest,
+      match: { id },
+    });
     if (result.isErr()) throw result.error;
   });
 

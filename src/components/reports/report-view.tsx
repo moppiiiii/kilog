@@ -11,12 +11,13 @@ import {
   PanelTitle,
   SectionTitle,
   SegmentedGroup,
-  segmentClass,
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { segmentClass } from "@/components/kirog/segment-class";
+import { WeightTrend } from "@/components/kirog/weight-trend";
 import { num, signed, signedPct } from "@/lib/format";
-import { barHeights, macroKcal, macroShare } from "@/lib/metrics";
+import { macroKcal, macroShare } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { Report, ReportRangeValue } from "@/schemas/reports";
 
@@ -24,6 +25,12 @@ import type { Report, ReportRangeValue } from "@/schemas/reports";
 const PREV_LABEL: Record<ReportRangeValue, string> = {
   week: "前週比",
   month: "前月比",
+};
+
+/** 体重変化の分母（「−1.2kg / 月」の「月」）。 */
+const RANGE_UNIT: Record<ReportRangeValue, string> = {
+  week: "週",
+  month: "月",
 };
 
 // 7A: レポート画面。期間の総括。
@@ -35,6 +42,20 @@ const RANGES = [
   { key: "week", label: "週" },
   { key: "month", label: "月" },
 ] as const;
+
+/** 増減の色。増えていれば成功色、減っていれば警告色（0 は中立）。 */
+function deltaClass(value: number): string | undefined {
+  if (value === 0) return undefined;
+  return value > 0 ? "text-k-success" : "text-k-danger";
+}
+
+/** 体重変化の注記。測定が 1 件以下なら比較できないと明示する。 */
+function weightFoot(points: number, deltaKg: number): string {
+  if (points === 0) return "測定の記録なし";
+  if (points === 1) return "測定 1 件（比較なし）";
+  if (deltaKg === 0) return "増減なし";
+  return deltaKg < 0 ? "減量傾向" : "増量傾向";
+}
 
 export function ReportView({
   report,
@@ -48,6 +69,7 @@ export function ReportView({
   const [p, f, c] = macroShare(report.avgMacros);
   const maxTons = Math.max(...report.muscleVolume.map((m) => m.tons));
   const prevLabel = PREV_LABEL[range];
+  const hasWeight = report.weightSeries.length > 1;
 
   return (
     <Panel>
@@ -102,14 +124,14 @@ export function ReportView({
           value={String(report.trainingDays)}
           unit={`/ ${report.daysInPeriod}日`}
           foot={`${prevLabel} ${signed(report.trainingDaysDelta, 0)}日`}
-          footClassName="text-k-success"
+          footClassName={deltaClass(report.trainingDaysDelta)}
         />
         <KpiCell
           label="総挙上量"
           value={report.volumeTons.toFixed(1)}
           unit="t"
           foot={`${prevLabel} ${signedPct(report.volumeDeltaPct)}`}
-          footClassName="text-k-success"
+          footClassName={deltaClass(report.volumeDeltaPct)}
         />
         <KpiCell
           label="平均カロリー"
@@ -119,10 +141,17 @@ export function ReportView({
         />
         <KpiCell
           label="体重変化"
-          value={report.weightDeltaKg.toFixed(1)}
-          unit="kg"
-          foot="順調に減量中"
-          footClassName="text-k-success"
+          value={hasWeight ? signed(report.weightDeltaKg) : "—"}
+          unit={hasWeight ? "kg" : undefined}
+          foot={weightFoot(report.weightSeries.length, report.weightDeltaKg)}
+          // 減量方向を成功色に（ダッシュボード・履歴と同じ扱い）。
+          footClassName={
+            !hasWeight
+              ? undefined
+              : report.weightDeltaKg <= 0
+                ? "text-k-success"
+                : "text-k-danger"
+          }
         />
       </KpiStrip>
 
@@ -268,22 +297,23 @@ export function ReportView({
           <div>
             <SectionTitle
               right={
-                <span className="text-k-success font-mono text-xs">
-                  {signed(report.weightDeltaKg)}kg / 月
-                </span>
+                hasWeight ? (
+                  <span
+                    className={cn(
+                      "font-mono text-xs",
+                      report.weightDeltaKg <= 0
+                        ? "text-k-success"
+                        : "text-k-danger",
+                    )}
+                  >
+                    {signed(report.weightDeltaKg)}kg / {RANGE_UNIT[range]}
+                  </span>
+                ) : null
               }
             >
               体重の推移
             </SectionTitle>
-            <div className="flex h-[70px] items-end gap-1">
-              {barHeights(report.weightSeries).map((height, index) => (
-                <div
-                  key={`${index}-${height}`}
-                  className="bg-k-edge flex-1 rounded-[2px]"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-            </div>
+            <WeightTrend points={report.weightSeries} />
           </div>
         </Pane>
       </SplitBody>

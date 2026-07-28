@@ -1,12 +1,18 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryKey,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import type { AddMealEntryValue, DailyMeals } from "@/schemas/meals";
 import { addMealEntry, dailyMealsQueryOptions } from "@/server/meals";
 
 // 食品を追加する。onMutate で該当スロットに即時反映し、失敗で巻き戻す。
-export function useAddMealEntry() {
+// queryKey は購読中の日（当日 or /meals/$date の過去日）を指す。既定は当日。
+export function useAddMealEntry(
+  queryKey: QueryKey = dailyMealsQueryOptions().queryKey,
+) {
   const queryClient = useQueryClient();
-  const { queryKey } = dailyMealsQueryOptions();
 
   return useMutation({
     mutationFn: (data: AddMealEntryValue) => addMealEntry({ data }),
@@ -45,6 +51,11 @@ export function useAddMealEntry() {
     },
     onError: (_e, _v, context) =>
       queryClient.setQueryData(queryKey, context?.previous),
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+      // 履歴フィード（["workouts"...]）とダッシュボードも当日/対象日の食事を集計する。
+      void queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }

@@ -1,4 +1,5 @@
-import { WeightTrend } from "@/components/dashboard/weight-trend";
+import { Link } from "@tanstack/react-router";
+
 import {
   KpiCell,
   KpiStrip,
@@ -9,14 +10,29 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { WeightTrend } from "@/components/kirog/weight-trend";
 import { SlotBadge } from "@/components/meals/slot-badge";
 import { kg, num, signed, stampDate } from "@/lib/format";
 import { macroShare, pct } from "@/lib/metrics";
-import type { Dashboard } from "@/schemas/dashboard";
+import { cn } from "@/lib/utils";
+import type { Dashboard, WeightRangeValue } from "@/schemas/dashboard";
 
 // 1A: 高密度データダッシュボード（Console）。
 
-export function ConsoleDashboard({ data }: { data: Dashboard }) {
+/** 体重グラフの期間トグル。値は search params（range）が正。 */
+const RANGES = [
+  { key: "30d", label: "30D" },
+  { key: "90d", label: "90D" },
+  { key: "1y", label: "1Y" },
+] as const;
+
+export function ConsoleDashboard({
+  data,
+  range,
+}: {
+  data: Dashboard;
+  range: WeightRangeValue;
+}) {
   const [p, f, c] = macroShare(data.macros);
   const proteinPct = pct(data.macros.p, data.targetMacros.p);
 
@@ -53,7 +69,9 @@ export function ConsoleDashboard({ data }: { data: Dashboard }) {
           label="STREAK"
           value={num(data.streakDays)}
           unit="日連続"
-          foot="記録を継続中"
+          foot={
+            data.streakDays > 0 ? "トレーニングを継続中" : "今日から再開しよう"
+          }
         />
       </KpiStrip>
 
@@ -63,11 +81,21 @@ export function ConsoleDashboard({ data }: { data: Dashboard }) {
             className="text-sm"
             right={
               <div className="flex gap-1.5 font-mono text-[11px]">
-                <span className="bg-k-chip text-k-fg rounded-md px-2.5 py-1">
-                  30D
-                </span>
-                <span className="text-k-fg-dim px-2.5 py-1">90D</span>
-                <span className="text-k-fg-dim px-2.5 py-1">1Y</span>
+                {RANGES.map((item) => (
+                  <Link
+                    key={item.key}
+                    to="/"
+                    search={{ range: item.key }}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 transition-colors",
+                      range === item.key
+                        ? "bg-k-chip text-k-fg"
+                        : "text-k-fg-dim hover:text-k-fg",
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
               </div>
             }
           >

@@ -1,8 +1,9 @@
 import { kg } from "@/lib/format";
-import { $supabaseServer } from "@/lib/supabase/server";
+import type { $supabaseServer } from "@/lib/supabase/server";
 import type { MealEntryRead } from "@/schemas/meals";
 import {
   type ExerciseRecord,
+  PB_TAG,
   type SessionRead,
   type SetRecord,
   type WorkoutSession,
@@ -11,16 +12,18 @@ import {
 // トレーニングの読み取りと集計の server-only 層。
 // `.server.ts` にすることで（DB 読み取り＋純ヘルパーを export しても）クライアント束に混ざらない。
 // dashboard / reports / workouts の各 serverFn がここを共有する。
+// 呼び出し側が生成済みの $supabase を渡す（profile.server.ts と同じ規約。
+// 同一リクエストで getSession を二重に呼ばない＝並列化してもトークン更新が競合しない）。
 
 type SetRead = SessionRead["exercises"][number]["sets"][number];
+type Server = Awaited<ReturnType<typeof $supabaseServer>>;
 
 /**
  * 全セッション（新しい順）。件数は個人データ規模なので一括取得で十分。
  * 同日複数セッションのため date に加えて started_at でも降順に並べ、順序を安定させる
  * （getActiveSession が「当日の最新の未確定」を find で拾える）。
  */
-export async function loadSessions(): Promise<SessionRead[]> {
-  const $supabase = await $supabaseServer();
+export async function loadSessions($supabase: Server): Promise<SessionRead[]> {
   return (
     await $supabase("@select/workout_sessions", {
       filter: (q) =>
@@ -32,8 +35,9 @@ export async function loadSessions(): Promise<SessionRead[]> {
 }
 
 /** 食事記録（新しい順・全期間）。フィード / 集計で日付ごとに畳む。 */
-export async function loadMealEntries(): Promise<MealEntryRead[]> {
-  const $supabase = await $supabaseServer();
+export async function loadMealEntries(
+  $supabase: Server,
+): Promise<MealEntryRead[]> {
   return (
     await $supabase("@select/meal_entries", {
       filter: (q) => q.order("date", { ascending: false }),
@@ -57,15 +61,17 @@ const durationMin = (read: SessionRead): number => {
   return Math.max(0, Math.round(ms / 60000));
 };
 
+// Intl のコンストラクタはロケールデータを読み込むので、セッション件数ぶん作り直さず
+// モジュール直下で 1 度だけ生成する（ロケール・オプションとも固定のため安全）。
+const JST_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Tokyo",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 const hhmm = (ts: string | null): string =>
-  ts
-    ? new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Tokyo",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(new Date(ts))
-    : "";
+  ts ? JST_TIME.format(new Date(ts)) : "";
 
 const topSet = (sets: SetRead[]): SetRead | null =>
   sets.reduce<SetRead | null>(
@@ -145,7 +151,7 @@ export function buildSession(
     avgRestSec,
     note: read.note,
     tags: read.tags,
-    personalBest: read.tags.includes("PB更新"),
+    personalBest: read.tags.includes(PB_TAG),
     exercises,
     previous: previous
       ? {

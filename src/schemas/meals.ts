@@ -47,7 +47,7 @@ export const FoodSuggestionSchema = z.object({
 });
 export type FoodSuggestion = z.infer<typeof FoodSuggestionSchema>;
 
-export const DailyMealsSchema = z.object({
+const DailyMealsSchema = z.object({
   date: z.string(),
   targetKcal: z.number().int().positive(),
   targetMacros: MacrosSchema,
@@ -70,8 +70,8 @@ export const GET_FOODS_QUERY =
   "id, owner_id, tag, name, default_qty, kcal, protein_g, fat_g, carb_g, is_suggestion";
 
 export const FoodEntitySchema = z.object({
-  id: z.string().uuid(),
-  owner_id: z.string().uuid().nullable(),
+  id: z.uuid(),
+  owner_id: z.uuid().nullable(),
   tag: z.string(),
   name: z.string(),
   default_qty: z.string(),
@@ -102,11 +102,11 @@ export const GET_MEAL_ENTRIES_QUERY =
   "id, date, slot, food_id, name, qty, kcal, protein_g, fat_g, carb_g, position";
 
 export const MealEntryEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
   date: z.string(),
   slot: MealSlot,
-  food_id: z.string().uuid().nullable(),
+  food_id: z.uuid().nullable(),
   name: z.string(),
   qty: z.string(),
   kcal: z.coerce.number(),
@@ -134,6 +134,18 @@ export const MealEntryReadSchema = MealEntryEntitySchema.pick({
 });
 export type MealEntryRead = z.infer<typeof MealEntryReadSchema>;
 
+/** ISO 日付（YYYY-MM-DD）。URL のパスパラメータ・serverFn の入力で共有する。 */
+export const IsoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 形式で指定してください");
+
+/**
+ * 食事画面が読む日付。省略＝当日（/meals）、指定＝その日（/meals/$date）。
+ * 日付の解決はサーバ側（JST の todayIso）に任せる。
+ */
+export const DailyMealsQuery = z.object({ date: IsoDate.optional() });
+export type DailyMealsQueryInput = z.infer<typeof DailyMealsQuery>;
+
 /** serverFn の入力契約（zod は schemas/ に集約）。 */
 export const AddMealEntryInput = z.object({
   date: z.string(),
@@ -144,11 +156,23 @@ export const AddMealEntryInput = z.object({
   protein_g: z.number().nonnegative().default(0),
   fat_g: z.number().nonnegative().default(0),
   carb_g: z.number().nonnegative().default(0),
-  food_id: z.string().uuid().nullable().default(null),
+  food_id: z.uuid().nullable().default(null),
   position: z.number().int().default(0),
 });
 
-export const RemoveMealEntryInput = z.object({ id: z.string().uuid() });
+export const RemoveMealEntryInput = z.object({ id: z.uuid() });
+
+/** 記録済み 1 品の修正。id で対象を絞り、送った項目だけ差し替える。 */
+export const UpdateMealEntryInput = z.object({
+  id: z.uuid(),
+  name: z.string().min(1).optional(),
+  qty: z.string().optional(),
+  kcal: z.number().nonnegative().optional(),
+  protein_g: z.number().nonnegative().optional(),
+  fat_g: z.number().nonnegative().optional(),
+  carb_g: z.number().nonnegative().optional(),
+});
+export type UpdateMealEntryValue = z.infer<typeof UpdateMealEntryInput>;
 export type AddMealEntryValue = z.infer<typeof AddMealEntryInput>;
 
 /**

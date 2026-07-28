@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
-import { kg, monthDay, monthLabel, todayIso } from "@/lib/format";
+import { addDaysIso, kg, monthDay, monthLabel, todayIso } from "@/lib/format";
 import { estimateOneRm } from "@/lib/metrics";
 import { $supabaseServer } from "@/lib/supabase/server";
 import type { MealEntryRead } from "@/schemas/meals";
@@ -24,13 +24,6 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
 const toTons = (kgValue: number) => round1(kgValue / 1000);
 
 // ── 期間ウィンドウの計算（すべて JST の todayIso() を起点にした ISO 日付） ──
-
-/** ISO 日付（YYYY-MM-DD）に日数を足し引きする（UTC 基準の純計算）。 */
-function addDaysIso(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 /** 2 つの ISO 日付の差（日数）。同日なら 0。 */
 function dayDiff(fromIso: string, iso: string): number {
@@ -126,23 +119,105 @@ type ExSet = {
   oneRm: number;
 };
 
+// 以下 3 つは取得済みデータに対する純粋な集計。serverFn のハンドラ本体から出して
+// おくことで、ハンドラが「読み取りだけ」であることがコードの形からも分かるようにする。
+
+/** 部位別ボリューム（前期比つき）。トン降順。 */
+function muscleVolumes(
+  allExSets: ExSet[],
+  curr: Window,
+  prev: Window,
+): MuscleVolume[] {
+  const partTons = (w: Window) => {
+    const map = new Map<string, number>();
+    for (const set of allExSets) {
+      if (!inWindow(set.date, w)) continue;
+      map.set(set.part, (map.get(set.part) ?? 0) + set.kg * set.reps);
+    }
+    return map;
+  };
+  const currParts = partTons(curr);
+  const prevParts = partTons(prev);
+  return [...currParts.entries()]
+    .map(([name, kgSum]): MuscleVolume => {
+      const prevKg = prevParts.get(name) ?? 0;
+      return {
+        name,
+        tons: toTons(kgSum),
+        deltaPct:
+          prevKg > 0 ? Math.round(((kgSum - prevKg) / prevKg) * 100) : 0,
+      };
+    })
+    .sort((a, b) => b.tons - a.tons);
+}
+
+/** 期間内に 1RM を更新した種目（期間ベスト − 期間開始前のベスト）。更新幅の大きい順に最大 4 件。 */
+function personalBestsIn(allExSets: ExSet[], curr: Window): PersonalBest[] {
+  const byEx = new Map<string, ExSet[]>();
+  for (const set of allExSets) {
+    const list = byEx.get(set.exId) ?? [];
+    list.push(set);
+    byEx.set(set.exId, list);
+  }
+  return [...byEx.values()]
+    .flatMap((sets): PersonalBest[] => {
+      const currSets = sets.filter((s) => inWindow(s.date, curr));
+      if (currSets.length === 0) return [];
+      const bestCurr = currSets.reduce((top, s) =>
+        s.oneRm > top.oneRm ? s : top,
+      );
+      const before = sets.filter((s) => s.date < curr.start);
+      const bestBefore = before.reduce((max, s) => Math.max(max, s.oneRm), 0);
+      const gainKg = round1(bestCurr.oneRm - bestBefore);
+      if (gainKg <= 0) return [];
+      return [
+        {
+          name: bestCurr.name,
+          value: `${kg(bestCurr.kg)}kg×${bestCurr.reps}`,
+          gainKg,
+          exerciseId: bestCurr.exId,
+        },
+      ];
+    })
+    .sort((a, b) => b.gainKg - a.gainKg)
+    .slice(0, 4);
+}
+
+/** 期間の食事の日別平均。割る母数は「記録のある日数」（記録の無い日は平均を薄めない）。 */
+function mealAverages(currEntries: MealEntryRead[]): {
+  avgKcal: number;
+  avgMacros: { p: number; f: number; c: number };
+} {
+  const dayCount = new Set(currEntries.map((entry) => entry.date)).size || 1;
+  const sum = (pick: (e: MealEntryRead) => number) =>
+    currEntries.reduce((total, e) => total + pick(e), 0);
+  return {
+    avgKcal: Math.round(sum((e) => e.kcal) / dayCount),
+    avgMacros: {
+      p: Math.round(sum((e) => e.protein_g) / dayCount),
+      f: Math.round(sum((e) => e.fat_g) / dayCount),
+      c: Math.round(sum((e) => e.carb_g) / dayCount),
+    },
+  };
+}
+
 export const getReport = createServerFn()
   .validator(ReportQuery)
   .handler(async ({ data }): Promise<ReportType> => {
     const { range, offset } = data;
     const $supabase = await $supabaseServer();
-    const profile = await loadProfile($supabase);
-    const sessions = await loadSessions();
-    const entries = (
-      await $supabase("@select/meal_entries", {
-        filter: (q) => q.order("date"),
-      })
-    ).unwrapOr([]);
-    const measurements = (
-      await $supabase("@select/body_measurements", {
-        filter: (q) => q.order("date"),
-      })
-    ).unwrapOr([]);
+    // 4 本とも互いに独立なので同時に投げる。
+    const [profile, sessions, entriesResult, measurementsResult] =
+      await Promise.all([
+        loadProfile($supabase),
+        loadSessions($supabase),
+        $supabase("@select/meal_entries", { filter: (q) => q.order("date") }),
+        $supabase("@select/body_measurements", {
+          filter: (q) => q.order("date"),
+        }),
+      ]);
+    const entries = entriesResult.unwrapOr([]);
+    const measurements = measurementsResult.unwrapOr([]);
 
     const plan = planPeriod(range, offset, todayIso());
     const { curr, prev } = plan;
@@ -194,80 +269,21 @@ export const getReport = createServerFn()
         : Math.min(3, Math.ceil((v / maxBucket) * 3)),
     );
 
-    // 部位別ボリューム（前期比）。
-    const partTons = (w: Window) => {
-      const map = new Map<string, number>();
-      for (const set of allExSets) {
-        if (!inWindow(set.date, w)) continue;
-        map.set(set.part, (map.get(set.part) ?? 0) + set.kg * set.reps);
-      }
-      return map;
-    };
-    const currParts = partTons(curr);
-    const prevParts = partTons(prev);
-    const muscleVolume: MuscleVolume[] = [...currParts.entries()]
-      .map(([name, kgSum]): MuscleVolume => {
-        const prevKg = prevParts.get(name) ?? 0;
-        return {
-          name,
-          tons: toTons(kgSum),
-          deltaPct:
-            prevKg > 0 ? Math.round(((kgSum - prevKg) / prevKg) * 100) : 0,
-        };
-      })
-      .sort((a, b) => b.tons - a.tons);
+    const muscleVolume = muscleVolumes(allExSets, curr, prev);
 
-    // 自己ベスト: 期間内に更新した種目（期間ベスト 1RM − 期間開始前のベスト）。
-    const byEx = new Map<string, ExSet[]>();
-    for (const set of allExSets) {
-      const list = byEx.get(set.exId) ?? [];
-      list.push(set);
-      byEx.set(set.exId, list);
-    }
-    const personalBests: PersonalBest[] = [...byEx.values()]
-      .flatMap((sets): PersonalBest[] => {
-        const currSets = sets.filter((s) => inWindow(s.date, curr));
-        if (currSets.length === 0) return [];
-        const bestCurr = currSets.reduce((top, s) =>
-          s.oneRm > top.oneRm ? s : top,
-        );
-        const before = sets.filter((s) => s.date < curr.start);
-        const bestBefore = before.reduce((max, s) => Math.max(max, s.oneRm), 0);
-        const gainKg = round1(bestCurr.oneRm - bestBefore);
-        if (gainKg <= 0) return [];
-        return [
-          {
-            name: bestCurr.name,
-            value: `${kg(bestCurr.kg)}kg×${bestCurr.reps}`,
-            gainKg,
-            exerciseId: bestCurr.exId,
-          },
-        ];
-      })
-      .sort((a, b) => b.gainKg - a.gainKg)
-      .slice(0, 4);
+    const personalBests = personalBestsIn(allExSets, curr);
 
     // 食事（期間の日別平均）。
-    const currEntries = entries.filter((e) => inWindow(e.date, curr));
-    const byDate = new Map<string, MealEntryRead[]>();
-    for (const entry of currEntries) {
-      const list = byDate.get(entry.date) ?? [];
-      list.push(entry);
-      byDate.set(entry.date, list);
-    }
-    const dayCount = byDate.size || 1;
-    const sum = (pick: (e: MealEntryRead) => number) =>
-      currEntries.reduce((total, e) => total + pick(e), 0);
-    const avgKcal = Math.round(sum((e) => e.kcal) / dayCount);
-    const avgMacros = {
-      p: Math.round(sum((e) => e.protein_g) / dayCount),
-      f: Math.round(sum((e) => e.fat_g) / dayCount),
-      c: Math.round(sum((e) => e.carb_g) / dayCount),
-    };
+    const { avgKcal, avgMacros } = mealAverages(
+      entries.filter((e) => inWindow(e.date, curr)),
+    );
 
     // 体重（期間の推移）。
     const currWeights = measurements.filter((m) => inWindow(m.date, curr));
-    const weightSeries = currWeights.map((m) => m.weight_kg);
+    const weightSeries = currWeights.map((m) => ({
+      date: m.date,
+      weightKg: m.weight_kg,
+    }));
     const weightDeltaKg =
       currWeights.length > 1
         ? round1(currWeights.at(-1)!.weight_kg - currWeights[0]!.weight_kg)

@@ -3,20 +3,25 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { ConsoleDashboard } from "@/components/dashboard/console-dashboard";
 import { PageShell } from "@/components/kirog/console";
+import { DashboardQuery } from "@/schemas/dashboard";
 import { dashboardQueryOptions } from "@/server/dashboard";
 
 export const Route = createFileRoute("/_authed/")({
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(dashboardQueryOptions()),
+  // 体重グラフの期間は search 由来。loaderDeps で prefetch とキャッシュキーを一致させる。
+  validateSearch: DashboardQuery,
+  loaderDeps: ({ search }) => search,
+  loader: ({ context, deps }) =>
+    context.queryClient.ensureQueryData(dashboardQueryOptions(deps)),
   component: DashboardPage,
 });
 
 function DashboardPage() {
-  const { data } = useSuspenseQuery(dashboardQueryOptions());
+  const query = Route.useSearch();
+  const { data } = useSuspenseQuery(dashboardQueryOptions(query));
 
   return (
     <PageShell>
-      <ConsoleDashboard data={data} />
+      <ConsoleDashboard data={data} range={query.range} />
     </PageShell>
   );
 }

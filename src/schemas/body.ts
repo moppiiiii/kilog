@@ -19,7 +19,14 @@ export const BodyMeasurementSchema = z.object({
 });
 export type BodyMeasurement = z.infer<typeof BodyMeasurementSchema>;
 
-export const BodyLogSchema = z.object({
+/** 体重の折れ線グラフ 1 点（ダッシュボード・レポート共通）。 */
+export const WeightPointSchema = z.object({
+  date: z.string(),
+  weightKg: z.number(),
+});
+export type WeightPoint = z.infer<typeof WeightPointSchema>;
+
+const BodyLogSchema = z.object({
   /** 最新の測定（＝入力欄の初期値）。 */
   latest: BodyMeasurementSchema,
   previous: BodyMeasurementSchema,
@@ -39,8 +46,8 @@ export const GET_BODY_MEASUREMENTS_QUERY =
   "id, date, weight_kg, body_fat_pct, muscle_kg, conditions, note";
 
 export const BodyMeasurementEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
   date: z.string(),
   weight_kg: z.coerce.number(),
   body_fat_pct: z.coerce.number().nullable(),

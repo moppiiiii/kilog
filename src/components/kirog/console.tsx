@@ -240,27 +240,27 @@ export function HintCard({
   );
 }
 
+const BADGE_TONES = {
+  accent: "bg-k-info-bg text-k-accent-soft",
+  success: "bg-k-success-bg text-k-success",
+  warn: "bg-k-warn-bg text-k-warn",
+  neutral: "bg-k-chip text-k-fg-sub",
+} as const;
+
 export function Badge({
   tone = "accent",
   className,
   children,
 }: {
-  tone?: "accent" | "success" | "warn" | "neutral";
+  tone?: keyof typeof BADGE_TONES;
   className?: string;
   children: React.ReactNode;
 }) {
-  const tones = {
-    accent: "bg-k-info-bg text-k-accent-soft",
-    success: "bg-k-success-bg text-k-success",
-    warn: "bg-k-warn-bg text-k-warn",
-    neutral: "bg-k-chip text-k-fg-sub",
-  } as const;
-
   return (
     <span
       className={cn(
         "rounded-[14px] px-2.5 py-1 text-[11px] whitespace-nowrap",
-        tones[tone],
+        BADGE_TONES[tone],
         className,
       )}
     >
@@ -327,15 +327,6 @@ export function SegmentedGroup({
   );
 }
 
-export function segmentClass(active: boolean): string {
-  return cn(
-    "rounded-[7px] px-3.5 py-1.5 text-[13px] transition-colors",
-    active
-      ? "bg-k-segment text-k-fg font-semibold"
-      : "text-k-fg-muted hover:text-k-fg",
-  );
-}
-
 /** 進捗バー（トラック＋塗り）。 */
 export function Meter({
   value,
@@ -367,6 +358,8 @@ export function Meter({
 }
 
 export type Bar = {
+  /** 並べ替え・絞り込みをまたいで棒を同定する安定キー（日付や種目 id）。 */
+  id: string;
   height: number;
   className?: string;
   marker?: React.ReactNode;
@@ -391,10 +384,9 @@ export function Bars({
         className,
       )}
     >
-      {bars.map((bar, index) => (
+      {bars.map((bar) => (
         <div
-          // 位置そのものが時系列上の意味を持つ固定長の系列なので index が安定キー。
-          key={index}
+          key={bar.id}
           className="relative flex h-full flex-1 flex-col items-center justify-end"
         >
           {bar.marker}

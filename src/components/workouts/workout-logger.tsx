@@ -1,57 +1,40 @@
 import { type QueryKey, useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import {
   Card,
-  Chip,
   DashedAction,
+  MonoLabel,
   Pane,
   Panel,
-  PanelTitle,
   SectionTitle,
   SplitBody,
-  TopBar,
 } from "@/components/kirog/console";
-import { Button } from "@/components/ui/button";
+import { TagInput } from "@/components/kirog/tag-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { AddExercisePanel } from "@/components/workouts/add-exercise-panel";
+import { SessionSummary } from "@/components/workouts/session-summary";
+import { SessionTopBar } from "@/components/workouts/session-top-bar";
 import { useCreateExercise } from "@/hooks/use-create-exercise";
 import { useDeleteExercise } from "@/hooks/use-delete-exercise";
 import { useSessionLogger } from "@/hooks/use-session-logger";
-import { num, signedPct, stampDate, timeHm, todayIso } from "@/lib/format";
-import {
-  cardioExercises,
-  cardioTotals,
-  exerciseVolume,
-  sessionVolume,
-  strengthExercises,
-  strengthSetCount,
-} from "@/lib/metrics";
+import { num, timeHm, todayIso } from "@/lib/format";
+import { exerciseVolume } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { ExerciseRead } from "@/schemas/exercises";
-import type {
-  ExerciseRecord,
-  SetRecord,
-  WorkoutSession,
+import {
+  type ExerciseRecord,
+  PB_TAG,
+  type SetRecord,
+  type WorkoutSession,
 } from "@/schemas/workouts";
 import { exercisesQueryOptions } from "@/server/exercises";
 
 // 2A: 記録画面（トレーニング）。当日セッションを作成し、種目・セットを編集して確定する。
 
 const nowIso = () => new Date().toISOString();
-
-// カスタム種目を新規作成するときの部位候補。
-const EXERCISE_PARTS = [
-  "胸",
-  "背中",
-  "肩",
-  "腕",
-  "脚",
-  "体幹",
-  "有酸素",
-  "その他",
-] as const;
 
 // queryKey は購読中のセッションのキャッシュキー。/log/$sessionId から過去セッションを
 // 編集するとき、楽観更新を正しいキャッシュへ当てるために渡す（既定は当日セッション）。
@@ -71,6 +54,7 @@ export function WorkoutLogger({
     addSet,
     updateSet,
     removeSet,
+    updateSession,
     confirm,
     removeExercise,
     removeSession,
@@ -86,26 +70,6 @@ export function WorkoutLogger({
     description: string;
     action: () => void;
   } | null>(null);
-
-  const volume = sessionVolume(session);
-  const deltaPct = session.previous
-    ? ((volume - session.previous.volumeKg) / session.previous.volumeKg) * 100
-    : 0;
-  const strength = strengthExercises(session);
-  const cardio = cardioExercises(session);
-  const cardioT = cardioTotals(session);
-
-  const usedIds = new Set(session.exercises.map((exercise) => exercise.id));
-  const candidates = master
-    .filter((exercise) => !usedIds.has(exercise.id))
-    .filter(
-      (exercise) =>
-        search === "" ||
-        exercise.name.includes(search) ||
-        exercise.part.includes(search),
-    );
-
-  const exactMatch = master.some((e) => e.name === search.trim());
 
   // 種目をセッションへ追加する（必要なら当日セッションを自動生成）。
   // 有酸素は「時間/距離/カロリー」1エントリを自動で用意する（セット表ではないため）。
@@ -193,70 +157,33 @@ export function WorkoutLogger({
     addExercise.error ??
     addSet.error ??
     updateSet.error ??
-    removeSet.error;
+    removeSet.error ??
+    updateSession.error;
 
   return (
     <Panel>
-      <TopBar>
-        <PanelTitle sub={session.id ? session.title : undefined}>
-          トレーニングを記録
-        </PanelTitle>
-        <div className="flex flex-wrap items-center justify-end gap-2.5">
-          <Link
-            to="/log/copy"
-            className="text-k-fg-dim hover:text-k-fg text-xs"
-          >
-            ↺ 前回コピー
-          </Link>
-          <Link
-            to="/log/timer"
-            className="text-k-fg-dim hover:text-k-fg text-xs"
-          >
-            ⏱ 休憩タイマー
-          </Link>
-          <div className="border-k-line bg-k-raised text-k-fg-sub flex items-center gap-2 rounded-[9px] border px-3.5 py-1.5 font-mono text-[13px]">
-            <span className="text-k-accent">◂</span>
-            {stampDate(session.id ? session.date : todayIso())}
-            <span className="text-k-accent">▸</span>
-          </div>
-          {session.id ? (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-k-fg-dim hover:text-k-danger rounded-[9px]"
-                disabled={removeSession.isPending}
-                onClick={() =>
-                  setPendingConfirm({
-                    title: "セッションを削除",
-                    description:
-                      "このセッションを削除しますか？種目とセットもすべて削除されます。",
-                    action: () =>
-                      removeSession.mutate(session.id, {
-                        onSuccess: () => navigate({ to: "/" }),
-                      }),
-                  })
-                }
-              >
-                削除
-              </Button>
-              <Button
-                size="sm"
-                className="rounded-[9px] font-bold"
-                disabled={confirm.isPending}
-                onClick={() =>
-                  confirm.mutate(
-                    { id: session.id, ended_at: nowIso() },
-                    { onSuccess: () => navigate({ to: "/" }) },
-                  )
-                }
-              >
-                記録を確定
-              </Button>
-            </>
-          ) : null}
-        </div>
-      </TopBar>
+      <SessionTopBar
+        session={session}
+        isDeleting={removeSession.isPending}
+        isConfirming={confirm.isPending}
+        onRequestDelete={() =>
+          setPendingConfirm({
+            title: "セッションを削除",
+            description:
+              "このセッションを削除しますか？種目とセットもすべて削除されます。",
+            action: () =>
+              removeSession.mutate(session.id, {
+                onSuccess: () => navigate({ to: "/" }),
+              }),
+          })
+        }
+        onConfirm={() =>
+          confirm.mutate(
+            { id: session.id, ended_at: nowIso() },
+            { onSuccess: () => navigate({ to: "/" }) },
+          )
+        }
+      />
 
       {writeError ? (
         <div
@@ -310,138 +237,34 @@ export function WorkoutLogger({
         </Pane>
 
         <Pane>
-          <SectionTitle>種目を検索して追加</SectionTitle>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="種目名・部位で検索"
-            aria-label="種目を検索"
-            className="mb-4"
+          <AddExercisePanel
+            master={master}
+            exercises={session.exercises}
+            search={search}
+            onSearchChange={setSearch}
+            onAdd={(exercise) => void onAddExercise(exercise)}
+            onCreate={(part) => void onCreateAndAdd(part)}
+            onRequestDelete={(exercise) =>
+              setPendingConfirm({
+                title: "種目を削除",
+                description: `「${exercise.name}」を削除しますか？`,
+                action: () => deleteExercise.mutate(exercise.id),
+              })
+            }
+            isCreating={createExercise.isPending}
+            isDeleting={deleteExercise.isPending}
+            deleteError={deleteExercise.error}
           />
-          {deleteExercise.isError ? (
-            <p className="text-k-danger mb-3 text-xs" role="alert">
-              種目を削除できませんでした: {deleteExercise.error.message}
-            </p>
-          ) : null}
-          {/* 検索して候補から追加。末尾に「新規作成」。 */}
-          {search.trim() ? (
-            <div className="border-k-line divide-k-line-soft mb-6 max-h-[280px] divide-y overflow-y-auto rounded-xl border">
-              {candidates.map((exercise) => (
-                <div
-                  key={exercise.id}
-                  className="hover:bg-k-raised flex items-center transition-colors"
-                >
-                  <button
-                    type="button"
-                    onClick={() => void onAddExercise(exercise)}
-                    aria-label={`${exercise.name} を追加`}
-                    className="flex flex-1 items-center gap-2.5 px-3.5 py-2.5 text-left"
-                  >
-                    <span className="text-k-accent-soft">＋</span>
-                    <span className="flex-1 truncate text-[13px]">
-                      {exercise.name}
-                    </span>
-                    <span className="text-k-fg-dim font-mono text-[11px]">
-                      {exercise.part}
-                    </span>
-                  </button>
-                  {/* 本人が作ったカスタム種目だけ削除できる（共通マスタは owner_id=null）。 */}
-                  {exercise.owner_id !== null ? (
-                    <button
-                      type="button"
-                      disabled={deleteExercise.isPending}
-                      onClick={() =>
-                        setPendingConfirm({
-                          title: "種目を削除",
-                          description: `「${exercise.name}」を削除しますか？`,
-                          action: () => deleteExercise.mutate(exercise.id),
-                        })
-                      }
-                      aria-label={`${exercise.name} を削除`}
-                      className="text-k-fg-faint hover:text-k-danger px-3 py-2.5 text-xs"
-                    >
-                      ✕
-                    </button>
-                  ) : null}
-                </div>
-              ))}
 
-              {!exactMatch ? (
-                <div className="bg-k-well/40 p-3.5">
-                  <div className="text-k-fg-dim mb-2.5 text-xs">
-                    「
-                    <span className="text-k-fg font-medium">
-                      {search.trim()}
-                    </span>
-                    」を新規作成 — 部位を選択
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {EXERCISE_PARTS.map((part) => (
-                      <button
-                        key={part}
-                        type="button"
-                        disabled={createExercise.isPending}
-                        onClick={() => void onCreateAndAdd(part)}
-                        aria-label={`${search.trim()} を ${part} として作成`}
-                      >
-                        <Chip>＋ {part}</Chip>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-k-fg-faint mb-6 text-xs">
-              種目名を入力して検索・追加できます
-            </p>
-          )}
+          <SessionSummary session={session} />
 
-          <SectionTitle>セッション サマリー</SectionTitle>
-          {strength.length === 0 && cardio.length === 0 ? (
-            <p className="text-k-fg-dim text-sm">
-              種目を追加すると集計が表示されます。
-            </p>
-          ) : null}
-
-          {strength.length > 0 ? (
-            <div className="bg-k-line flex flex-col gap-px overflow-hidden rounded-[10px]">
-              <SummaryRow
-                label="筋トレ種目数"
-                value={String(strength.length)}
-              />
-              <SummaryRow
-                label="総セット数"
-                value={String(strengthSetCount(session))}
-              />
-              <SummaryRow
-                label="総挙上量"
-                value={`${num(volume)} kg`}
-                valueClassName="text-k-accent"
-              />
-              {session.previous ? (
-                <SummaryRow
-                  label="前回比"
-                  value={signedPct(deltaPct)}
-                  valueClassName={
-                    deltaPct >= 0 ? "text-k-success" : "text-k-danger"
-                  }
-                />
-              ) : null}
-            </div>
-          ) : null}
-
-          {cardio.length > 0 ? (
-            <div className="bg-k-line mt-3 flex flex-col gap-px overflow-hidden rounded-[10px]">
-              <SummaryRow label="有酸素種目数" value={String(cardio.length)} />
-              <SummaryRow label="時間" value={`${num(cardioT.minutes)} 分`} />
-              <SummaryRow label="距離" value={`${cardioT.km} km`} />
-              <SummaryRow
-                label="消費カロリー"
-                value={`${num(cardioT.kcal)} kcal`}
-                valueClassName="text-k-warn"
-              />
-            </div>
+          {session.id ? (
+            <SessionMeta
+              session={session}
+              onChange={(patch) =>
+                updateSession.mutate({ id: session.id, ...patch })
+              }
+            />
           ) : null}
         </Pane>
       </SplitBody>
@@ -457,19 +280,84 @@ export function WorkoutLogger({
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-  valueClassName,
+/**
+ * セッションのメタ情報（名前・部位・メモ・タグ）。すべて即時保存で、
+ * テキストは入力欄から離れたときに確定する。「PB更新」タグを付けると詳細に 🏆 が出る。
+ */
+function SessionMeta({
+  session,
+  onChange,
 }: {
-  label: string;
-  value: string;
-  valueClassName?: string;
+  session: WorkoutSession;
+  onChange: (patch: {
+    title?: string;
+    parts?: string[];
+    note?: string;
+    tags?: string[];
+  }) => void;
 }) {
+  const fieldClass =
+    "border-k-line-strong bg-k-well text-k-fg w-full rounded-[10px] border px-3.5 py-2.5 text-[13px] outline-none";
+
   return (
-    <div className="bg-k-raised flex items-center justify-between px-4 py-3.5">
-      <span className="text-k-fg-muted text-[13px]">{label}</span>
-      <span className={cn("font-mono text-base", valueClassName)}>{value}</span>
+    <div className="mt-6 flex flex-col gap-3.5">
+      <SectionTitle>セッション情報</SectionTitle>
+
+      <div>
+        <MonoLabel className="mb-1.5">セッション名</MonoLabel>
+        <input
+          // セッションが切り替わったら入力欄も作り直す（未確定の値を持ち越さない）。
+          key={`${session.id}-title`}
+          defaultValue={session.title}
+          aria-label="セッション名"
+          className={fieldClass}
+          onBlur={(event) => {
+            const title = event.target.value.trim();
+            if (title === "" || title === session.title) {
+              event.target.value = session.title;
+              return;
+            }
+            onChange({ title });
+          }}
+        />
+      </div>
+
+      <div>
+        <MonoLabel className="mb-1.5">部位</MonoLabel>
+        <TagInput
+          values={session.parts}
+          onChange={(parts) => onChange({ parts })}
+          placeholder="＋ 部位"
+          label="部位を追加"
+        />
+      </div>
+
+      <div>
+        <MonoLabel className="mb-1.5">タグ</MonoLabel>
+        <TagInput
+          values={session.tags}
+          onChange={(tags) => onChange({ tags })}
+          placeholder={`＋ ${PB_TAG} など`}
+          label="タグを追加"
+        />
+      </div>
+
+      <div>
+        <MonoLabel className="mb-1.5">メモ</MonoLabel>
+        <Textarea
+          key={`${session.id}-note`}
+          defaultValue={session.note}
+          rows={3}
+          placeholder="コンディション・気づきなど"
+          aria-label="メモ"
+          className={cn(fieldClass, "min-h-[76px] resize-y shadow-none")}
+          onBlur={(event) => {
+            const note = event.target.value;
+            if (note === session.note) return;
+            onChange({ note });
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -604,6 +492,7 @@ function CardioField({
       </div>
       <div className="flex items-baseline gap-1">
         <NumCell
+          label={`${label} (${unit})`}
           value={value}
           step={step}
           disabled={disabled}
@@ -646,12 +535,14 @@ function StrengthSets({
         >
           <div className="text-k-fg-dim font-mono text-sm">{set.n}</div>
           <NumCell
+            label={`セット ${set.n} の重量 (kg)`}
             value={set.kg}
             step={2.5}
             disabled={!set.id}
             onCommit={(v) => set.id && onEditSet(set.id, { weight_kg: v })}
           />
           <NumCell
+            label={`セット ${set.n} のレップ数`}
             value={set.reps}
             step={1}
             disabled={!set.id}
@@ -660,6 +551,7 @@ function StrengthSets({
             }
           />
           <NumCell
+            label={`セット ${set.n} の RPE`}
             value={set.rpe}
             step={0.5}
             disabled={!set.id}
@@ -709,14 +601,20 @@ function StrengthSets({
   );
 }
 
-/** 数値セル。表示は div ライクだが編集可能。onCommit は blur / Enter で発火。 */
+/**
+ * 数値セル。表示は div ライクだが編集可能。onCommit は blur / Enter で発火。
+ * 列見出し（KG / REPS / RPE）は視覚的なものでセルと紐づかないため、
+ * label は必須にして読み上げ用の名前を必ず持たせる。
+ */
 function NumCell({
+  label,
   value,
   step,
   disabled,
   muted,
   onCommit,
 }: {
+  label: string;
   value: number | null;
   step: number;
   disabled?: boolean;
@@ -726,6 +624,7 @@ function NumCell({
   return (
     <input
       type="number"
+      aria-label={label}
       step={step}
       inputMode="decimal"
       disabled={disabled}
