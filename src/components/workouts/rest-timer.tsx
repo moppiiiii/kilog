@@ -49,20 +49,23 @@ export function RestTimer({ context }: { context: RestContext }) {
   const [rested, setRested] = useState(0);
   const [sound, setSound] = useState(true);
 
+  // 1 秒ごとに 1 つ進める。目安の 0 到達もこのティックの中で判定して止め、合図を鳴らす
+  // （remaining を監視するだけの 2 つ目の effect は持たない）。
+  // remaining を依存に置いているので、ティック時点の remaining は常に最新。
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
+    const id = setTimeout(() => {
+      const next = Math.max(0, remaining - 1);
       setRested((current) => current + 1);
-      setRemaining((current) => Math.max(0, current - 1));
+      setRemaining(next);
+      // このティックで 0 に達したときだけ鳴らす。0 のまま再開した場合は
+      // 実休憩だけ進み、鳴り直さない（休憩自体は続けられる）。
+      if (next === 0 && remaining > 0) {
+        setRunning(false);
+        if (sound) playBeep();
+      }
     }, 1000);
-    return () => clearInterval(id);
-  }, [running]);
-
-  // 目安の 0 到達で止めて合図を鳴らす（休憩自体は続けられる）。
-  useEffect(() => {
-    if (!running || remaining > 0) return;
-    setRunning(false);
-    if (sound) playBeep();
+    return () => clearTimeout(id);
   }, [remaining, running, sound]);
 
   const ratio = total === 0 ? 0 : Math.max(0, Math.min(1, remaining / total));
