@@ -150,14 +150,88 @@ function mealRow(date: string, entries: MealEntryRead[]): LogRow {
 }
 
 /** 一覧の 1 行を iso 日付付きで持つ中間表現（並び替え・期間フィルタ用）。 */
-type FeedItem = { iso: string; kind: LogRow["kind"]; row: LogRow };
+type FeedItem = {
+  iso: string;
+  kind: LogRow["kind"];
+  row: LogRow;
+  text: string;
+};
+
+// ─── フリーワード検索 ────────────────────────────────────────────────────────
+// 画面に出ている文字だけでなく、種目名・部位・カテゴリ・タグ・食品名まで検索対象に含める。
+
+type SessionExerciseEmbed = SessionRead["exercises"][number];
+
+/**
+ * 日付の検索表記。表示は "07/28"（ゼロ埋め）だが、"7/28"・"7月28日"・ISO・曜日でも引けるよう
+ * 表記ゆれをまとめて並べる。
+ */
+function dateText(iso: string): string {
+  const [y = "", m = "", d = ""] = iso.split("-");
+  const mn = Number(m);
+  const dn = Number(d);
+  return [
+    iso,
+    `${y}/${m}/${d}`,
+    `${m}/${d}`,
+    `${mn}/${dn}`,
+    `${mn}月${dn}日`,
+    dow(iso),
+  ].join(" ");
+}
+
+/** 種目 1 件の検索語（種目名・部位・有酸素/筋トレの別）。 */
+function exerciseText(embed: SessionExerciseEmbed): string {
+  const exercise = embed.exercise;
+  return [
+    exercise?.name ?? embed.exercise_id,
+    exercise?.part ?? "",
+    exercise?.is_cardio ? "有酸素 カーディオ cardio" : "筋トレ ウェイト",
+  ].join(" ");
+}
+
+/** セッションの検索対象テキスト（日付・タイトル・部位・タグ・種目・カテゴリ・メモ）。 */
+function sessionText(read: SessionRead): string {
+  return [
+    dateText(read.date),
+    "トレーニング",
+    read.title,
+    ...read.parts,
+    ...read.tags,
+    read.note,
+    ...read.exercises.map(exerciseText),
+  ].join(" ");
+}
+
+/** 食事 1 日分の検索対象テキスト（日付・食品名・量）。 */
+function mealText(date: string, entries: MealEntryRead[]): string {
+  return [
+    dateText(date),
+    "食事",
+    ...entries.flatMap((e) => [e.name, e.qty]),
+  ].join(" ");
+}
+
+/**
+ * 空白区切りの語をすべて含むか（大文字小文字を無視した AND 検索）を返す判定関数。
+ * 空クエリなら常に true＝絞り込みなし。
+ */
+function makeMatcher(q: string): (text: string) => boolean {
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return () => true;
+  return (text) => {
+    const lower = text.toLowerCase();
+    return terms.every((term) => lower.includes(term));
+  };
+}
 
 export const getLogFeed = createServerFn()
   .validator(LogFeedQuery)
   .handler(async ({ data }): Promise<LogFeed> => {
-    const { kind, period, page } = data;
+    const { kind, period, page, q } = data;
     const sessions = await loadSessions();
     const entries = await loadMealEntries();
+    const matches = makeMatcher(q);
 
     // 食事は日付ごとに 1 行へまとめる。
     const mealsByDate = new Map<string, MealEntryRead[]>();
@@ -167,16 +241,29 @@ export const getLogFeed = createServerFn()
       mealsByDate.set(entry.date, list);
     }
 
+    // 検索対象テキストは行・サマリーの両方で使うので 1 度だけ組む。
+    const sessionTexts = new Map(
+      sessions.map((session) => [session.id, sessionText(session)]),
+    );
+    const mealTexts = new Map(
+      [...mealsByDate.entries()].map(([date, list]) => [
+        date,
+        mealText(date, list),
+      ]),
+    );
+
     const items: FeedItem[] = [
       ...sessions.map((session) => ({
         iso: session.date,
         kind: "training" as const,
         row: trainingRow(session, findPrevious(sessions, session)),
+        text: sessionTexts.get(session.id) ?? "",
       })),
       ...[...mealsByDate.entries()].map(([date, list]) => ({
         iso: date,
         kind: "meal" as const,
         row: mealRow(date, list),
+        text: mealTexts.get(date) ?? "",
       })),
     ];
 
@@ -186,18 +273,19 @@ export const getLogFeed = createServerFn()
       return a.iso < b.iso ? 1 : -1;
     });
 
-    // 期間フィルタ → 種別ごとの件数（サイドバー用。種別選択には依存させない）。
+    // 期間 → 検索の順に絞り、種別ごとの件数（サイドバー用。種別選択には依存させない）。
     const from = periodStartIso(period);
     const inPeriod = from ? items.filter((item) => item.iso >= from) : items;
+    const found = inPeriod.filter((item) => matches(item.text));
     const counts = {
-      all: inPeriod.length,
-      training: inPeriod.filter((item) => item.kind === "training").length,
-      meal: inPeriod.filter((item) => item.kind === "meal").length,
+      all: found.length,
+      training: found.filter((item) => item.kind === "training").length,
+      meal: found.filter((item) => item.kind === "meal").length,
     };
 
     // 種別フィルタ → ページング。total は現在の絞り込み後の件数。
     const filtered =
-      kind === "all" ? inPeriod : inPeriod.filter((item) => item.kind === kind);
+      kind === "all" ? found : found.filter((item) => item.kind === kind);
     const total = filtered.length;
     const pageCount = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
     const safePage = Math.min(Math.max(1, page), pageCount);
@@ -206,16 +294,21 @@ export const getLogFeed = createServerFn()
       .slice(start, start + LOG_PAGE_SIZE)
       .map((item) => item.row);
 
-    // サマリー・部位は期間内で集計する（種別・ページには依存させない）。
-    const periodSessions = from
-      ? sessions.filter((session) => session.date >= from)
-      : sessions;
+    // サマリー・部位は期間＋検索で集計する（種別・ページには依存させない）。
+    const periodSessions = sessions.filter(
+      (session) =>
+        (!from || session.date >= from) &&
+        matches(sessionTexts.get(session.id) ?? ""),
+    );
     const totalVolume = periodSessions.reduce(
       (sum, session) => sum + sessionVolumeKg(session),
       0,
     );
     const periodMealKcals = [...mealsByDate.entries()]
-      .filter(([date]) => !from || date >= from)
+      .filter(
+        ([date]) =>
+          (!from || date >= from) && matches(mealTexts.get(date) ?? ""),
+      )
       .map(([, list]) => list.reduce((sum, entry) => sum + entry.kcal, 0));
     const avgKcal = periodMealKcals.length
       ? Math.round(

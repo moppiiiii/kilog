@@ -1,5 +1,6 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import type * as React from "react";
+import { useEffect, useState } from "react";
 
 import {
   Badge,
@@ -54,9 +55,7 @@ export function LogFeedView({
       <TopBar>
         <PanelTitle sub={`${num(feed.total)} 件`}>記録の履歴</PanelTitle>
         <div className="flex items-center gap-3.5">
-          <div className="border-k-line bg-k-raised text-k-fg-faint flex w-[200px] items-center gap-2.5 rounded-[9px] border px-3.5 py-2 text-[13px]">
-            ⌕ <span>記録を検索</span>
-          </div>
+          <SearchBox filter={filter} />
         </div>
       </TopBar>
 
@@ -209,6 +208,14 @@ export function LogFeedView({
                   </div>
                 );
               })}
+
+              {rows.length === 0 ? (
+                <div className="text-k-fg-dim px-6 py-12 text-center text-[13px]">
+                  {filter.q
+                    ? `「${filter.q}」に一致する記録がありません`
+                    : "この条件の記録がありません"}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -246,6 +253,64 @@ export function LogFeedView({
         </div>
       </SplitBody>
     </Panel>
+  );
+}
+
+/** 検索の反映を待つ時間（ms）。打鍵ごとに fetch させないための debounce。 */
+const SEARCH_DEBOUNCE_MS = 250;
+
+/**
+ * フリーワード検索。値は search params（q）が正で、入力欄は debounce して追従させる。
+ * 絞り込みは serverFn 側（getLogFeed）で行うので、ここは search を書き換えるだけ。
+ */
+function SearchBox({ filter }: { filter: LogFeedQueryInput }) {
+  const navigate = useNavigate();
+  const [text, setText] = useState(filter.q);
+
+  // 戻る/進む・リンク遷移で q が変わったら入力欄も合わせる。
+  // 入力途中の末尾スペースを消さないよう、trim して一致するときは触らない。
+  useEffect(() => {
+    setText((current) => (current.trim() === filter.q ? current : filter.q));
+  }, [filter.q]);
+
+  // 入力が止まってから search を更新。履歴を汚さないよう replace で置き換える。
+  useEffect(() => {
+    const next = text.trim();
+    if (next === filter.q) return;
+    const timer = setTimeout(() => {
+      void navigate({
+        to: "/history",
+        search: { ...filter, q: next, page: 1 },
+        replace: true,
+      });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [text, filter, navigate]);
+
+  return (
+    <div className="border-k-line bg-k-raised focus-within:border-k-accent-edge flex w-[200px] items-center gap-2.5 rounded-[9px] border px-3.5 py-2 text-[13px] transition-colors">
+      <span className="text-k-fg-faint" aria-hidden>
+        ⌕
+      </span>
+      <input
+        type="search"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        placeholder="記録を検索"
+        aria-label="記録を検索"
+        className="text-k-fg placeholder:text-k-fg-faint min-w-0 flex-1 bg-transparent outline-none [&::-webkit-search-cancel-button]:hidden"
+      />
+      {text ? (
+        <button
+          type="button"
+          onClick={() => setText("")}
+          aria-label="検索を消す"
+          className="text-k-fg-faint hover:text-k-fg transition-colors"
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
   );
 }
 

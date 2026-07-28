@@ -137,6 +137,8 @@ export const LogFeedQuery = z.object({
     .default("month")
     .catch("month"),
   page: z.number().int().min(1).default(1).catch(1),
+  /** フリーワード検索。空白区切りの AND 検索で、空文字＝絞り込みなし。 */
+  q: z.string().trim().default("").catch(""),
 });
 export type LogFeedQueryInput = z.infer<typeof LogFeedQuery>;
 
