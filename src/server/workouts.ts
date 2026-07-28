@@ -8,6 +8,7 @@ import {
   monthDay,
   num,
   signedPct,
+  timeHm,
   todayIso,
   toneOf,
 } from "@/lib/format";
@@ -17,6 +18,7 @@ import {
   AddSessionExerciseInput,
   AddSetInput,
   ConfirmSessionInput,
+  CopySessionInput,
   type CopySource,
   CreateSessionInput,
   type LogFeed,
@@ -158,7 +160,19 @@ type FeedItem = {
   kind: LogRow["kind"];
   row: LogRow;
   text: string;
+  /** 部位フィルタ用。食事行は空。 */
+  parts: string[];
 };
+
+/** セッションに紐づく部位（セッションの parts と、実際に行った種目の部位の和集合）。 */
+function sessionPartList(read: SessionRead): string[] {
+  return [
+    ...new Set([
+      ...read.parts,
+      ...read.exercises.flatMap((exercise) => exercise.exercise?.part ?? []),
+    ]),
+  ];
+}
 
 // ─── フリーワード検索 ────────────────────────────────────────────────────────
 // 画面に出ている文字だけでなく、種目名・部位・カテゴリ・タグ・食品名まで検索対象に含める。
@@ -231,10 +245,12 @@ function makeMatcher(q: string): (text: string) => boolean {
 export const getLogFeed = createServerFn()
   .validator(LogFeedQuery)
   .handler(async ({ data }): Promise<LogFeed> => {
-    const { kind, period, page, q } = data;
+    const { kind, period, page, q, part } = data;
     const sessions = await loadSessions();
     const entries = await loadMealEntries();
     const matches = makeMatcher(q);
+    /** 部位フィルタ。食事行は部位を持たないので、指定時は自動的に除外される。 */
+    const inPart = (parts: string[]) => part === "" || parts.includes(part);
 
     // 食事は日付ごとに 1 行へまとめる。
     const mealsByDate = new Map<string, MealEntryRead[]>();
@@ -255,18 +271,25 @@ export const getLogFeed = createServerFn()
       ]),
     );
 
+    // 部位もテキストと同じく、行・サマリー・チップ一覧で使い回す。
+    const sessionParts = new Map(
+      sessions.map((session) => [session.id, sessionPartList(session)]),
+    );
+
     const items: FeedItem[] = [
       ...sessions.map((session) => ({
         iso: session.date,
         kind: "training" as const,
         row: trainingRow(session, findPrevious(sessions, session)),
         text: sessionTexts.get(session.id) ?? "",
+        parts: sessionParts.get(session.id) ?? [],
       })),
       ...[...mealsByDate.entries()].map(([date, list]) => ({
         iso: date,
         kind: "meal" as const,
         row: mealRow(date, list),
         text: mealTexts.get(date) ?? "",
+        parts: [] as string[],
       })),
     ];
 
@@ -276,19 +299,20 @@ export const getLogFeed = createServerFn()
       return a.iso < b.iso ? 1 : -1;
     });
 
-    // 期間 → 検索の順に絞り、種別ごとの件数（サイドバー用。種別選択には依存させない）。
+    // 期間 → 検索 → 部位の順に絞り、種別ごとの件数（サイドバー用。種別選択には依存させない）。
     const from = periodStartIso(period);
     const inPeriod = from ? items.filter((item) => item.iso >= from) : items;
     const found = inPeriod.filter((item) => matches(item.text));
+    const scoped = found.filter((item) => inPart(item.parts));
     const counts = {
-      all: found.length,
-      training: found.filter((item) => item.kind === "training").length,
-      meal: found.filter((item) => item.kind === "meal").length,
+      all: scoped.length,
+      training: scoped.filter((item) => item.kind === "training").length,
+      meal: scoped.filter((item) => item.kind === "meal").length,
     };
 
     // 種別フィルタ → ページング。total は現在の絞り込み後の件数。
     const filtered =
-      kind === "all" ? found : found.filter((item) => item.kind === kind);
+      kind === "all" ? scoped : scoped.filter((item) => item.kind === kind);
     const total = filtered.length;
     const pageCount = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
     const safePage = Math.min(Math.max(1, page), pageCount);
@@ -297,35 +321,41 @@ export const getLogFeed = createServerFn()
       .slice(start, start + LOG_PAGE_SIZE)
       .map((item) => item.row);
 
-    // サマリー・部位は期間＋検索で集計する（種別・ページには依存させない）。
-    const periodSessions = sessions.filter(
+    // サマリーは期間＋検索＋部位で集計する（種別・ページには依存させない）。
+    const foundSessions = sessions.filter(
       (session) =>
         (!from || session.date >= from) &&
         matches(sessionTexts.get(session.id) ?? ""),
     );
-    const totalVolume = periodSessions.reduce(
+    const scopedSessions = foundSessions.filter((session) =>
+      inPart(sessionParts.get(session.id) ?? []),
+    );
+    const totalVolume = scopedSessions.reduce(
       (sum, session) => sum + sessionVolumeKg(session),
       0,
     );
-    const periodMealKcals = [...mealsByDate.entries()]
-      .filter(
-        ([date]) =>
-          (!from || date >= from) && matches(mealTexts.get(date) ?? ""),
-      )
-      .map(([, list]) => list.reduce((sum, entry) => sum + entry.kcal, 0));
+    // 部位を選ぶと食事は対象外になるので、平均 kcal もその指定に従う。
+    const periodMealKcals =
+      part === ""
+        ? [...mealsByDate.entries()]
+            .filter(
+              ([date]) =>
+                (!from || date >= from) && matches(mealTexts.get(date) ?? ""),
+            )
+            .map(([, list]) => list.reduce((sum, entry) => sum + entry.kcal, 0))
+        : [];
     const avgKcal = periodMealKcals.length
       ? Math.round(
           periodMealKcals.reduce((s, k) => s + k, 0) / periodMealKcals.length,
         )
       : 0;
 
+    // チップ一覧は部位フィルタ前の集合から作る（選択中でも他の部位へ切り替えられる）。
     const parts = [
       ...new Set(
-        periodSessions.flatMap((session) =>
-          session.exercises.map((exercise) => exercise.exercise?.part ?? ""),
-        ),
+        foundSessions.flatMap((session) => sessionParts.get(session.id) ?? []),
       ),
-    ].filter(Boolean);
+    ];
 
     return {
       rows,
@@ -360,9 +390,83 @@ export const getCopySources = createServerFn().handler(
       date: session.date,
       exerciseCount: session.exercises.length,
       volumeKg: sessionVolumeKg(session),
+      // 選択即プレビューにしたいので、候補ごとに種目・セットまで持たせる（最大 6 件）。
+      exercises: buildSession(session, findPrevious(sessions, session))
+        .exercises,
     }));
   },
 );
+
+/**
+ * コピー元セッションを今日の新しいセッションとして複製する。
+ * 重量は bumpKg を一律加算し、実施状態（done / rpe / 休憩）は引き継がない
+ * （これから実施する記録なので、値は「前回の目標」として置くだけ）。
+ */
+export const copySession = createServerFn({ method: "POST" })
+  .validator(CopySessionInput)
+  .handler(async ({ data }): Promise<{ id: string }> => {
+    const sessions = await loadSessions();
+    const source = sessions.find((candidate) => candidate.id === data.sourceId);
+    if (!source) throw notFound();
+
+    const $supabase = await $supabaseServer();
+    const id = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+
+    const created = await $supabase("@insert/workout_sessions", {
+      data: {
+        id,
+        date: todayIso(),
+        // 同日に複数セッションを開始できるよう、記録画面と同じ命名規則に合わせる。
+        title: `セッション ${timeHm(startedAt)}`,
+        parts: source.parts,
+        started_at: startedAt,
+      },
+    });
+    if (created.isErr()) throw created.error;
+
+    const ordered = [...source.exercises].sort(
+      (a, b) => a.position - b.position,
+    );
+    const exerciseRows = ordered.map((exercise, index) => ({
+      id: crypto.randomUUID(),
+      session_id: id,
+      exercise_id: exercise.exercise_id,
+      position: index,
+    }));
+    if (exerciseRows.length === 0) return { id };
+
+    const addedExercises = await $supabase("@insert/session_exercises", {
+      data: exerciseRows,
+    });
+    if (addedExercises.isErr()) throw addedExercises.error;
+
+    const setRows = ordered.flatMap((exercise, index) =>
+      [...exercise.sets]
+        .sort((a, b) => a.set_no - b.set_no)
+        .map((set, position) => ({
+          id: crypto.randomUUID(),
+          session_exercise_id: exerciseRows[index]!.id,
+          set_no: position + 1,
+          weight_kg: Math.max(0, set.weight_kg + data.bumpKg),
+          reps: set.reps,
+          rpe: null,
+          rest_sec: null,
+          done: false,
+          duration_min: set.duration_min,
+          distance_km: set.distance_km,
+          kcal: set.kcal,
+        })),
+    );
+    if (setRows.length > 0) {
+      const addedSets = await $supabase("@insert/workout_sets", {
+        data: setRows,
+      });
+      if (addedSets.isErr()) throw addedSets.error;
+    }
+
+    return { id };
+  });
 
 export const copySourcesQueryOptions = () =>
   queryOptions({

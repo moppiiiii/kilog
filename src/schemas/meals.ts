@@ -161,6 +161,18 @@ export const AddMealEntryInput = z.object({
 });
 
 export const RemoveMealEntryInput = z.object({ id: z.string().uuid() });
+
+/** 記録済み 1 品の修正。id で対象を絞り、送った項目だけ差し替える。 */
+export const UpdateMealEntryInput = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).optional(),
+  qty: z.string().optional(),
+  kcal: z.number().nonnegative().optional(),
+  protein_g: z.number().nonnegative().optional(),
+  fat_g: z.number().nonnegative().optional(),
+  carb_g: z.number().nonnegative().optional(),
+});
+export type UpdateMealEntryValue = z.infer<typeof UpdateMealEntryInput>;
 export type AddMealEntryValue = z.infer<typeof AddMealEntryInput>;
 
 /**

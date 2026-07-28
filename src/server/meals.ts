@@ -13,6 +13,7 @@ import {
   type MealSlotValue,
   RemoveMealEntryInput,
   SLOT_META,
+  UpdateMealEntryInput,
 } from "@/schemas/meals";
 
 import { loadProfile } from "./profile.server";
@@ -84,6 +85,19 @@ export const addMealEntry = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const $supabase = await $supabaseServer();
     const result = await $supabase("@insert/meal_entries", { data });
+    if (result.isErr()) throw result.error;
+  });
+
+/** 記録済みの 1 品を修正する（量・kcal・PFC の打ち間違い直し）。 */
+export const updateMealEntry = createServerFn({ method: "POST" })
+  .validator(UpdateMealEntryInput)
+  .handler(async ({ data }) => {
+    const { id, ...rest } = data;
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@update/meal_entries", {
+      data: rest,
+      match: { id },
+    });
     if (result.isErr()) throw result.error;
   });
 

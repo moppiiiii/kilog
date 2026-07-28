@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   Badge,
-  Chip,
   MonoLabel,
   Pane,
   Panel,
@@ -106,11 +105,32 @@ export function LogFeedView({
 
           <MonoLabel className="mb-3">部位</MonoLabel>
           <div className="flex flex-wrap gap-1.5">
-            {feed.parts.map((part) => (
-              <Chip key={part} className="px-2.5 py-1 text-[11px]">
-                {part}
-              </Chip>
-            ))}
+            {feed.parts.map((part) => {
+              const active = filter.part === part;
+
+              return (
+                <Link
+                  key={part}
+                  to="/history"
+                  // 選択中のチップをもう一度押したら解除。部位を選ぶと食事行は外れる。
+                  search={{ ...filter, part: active ? "" : part, page: 1 }}
+                  aria-pressed={active}
+                  className={cn(
+                    "rounded-2xl border px-2.5 py-1 text-[11px] transition-colors",
+                    active
+                      ? "border-k-accent-edge bg-k-accent-bg text-k-accent-soft"
+                      : "border-k-line-strong bg-k-chip text-k-fg-sub hover:text-k-fg",
+                  )}
+                >
+                  {part}
+                </Link>
+              );
+            })}
+            {feed.parts.length === 0 ? (
+              <span className="text-k-fg-faint text-[11px]">
+                この期間の記録がありません
+              </span>
+            ) : null}
           </div>
         </Pane>
 

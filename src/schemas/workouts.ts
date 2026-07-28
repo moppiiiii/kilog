@@ -104,15 +104,23 @@ export const LogFeedSchema = z.object({
 });
 export type LogFeed = z.infer<typeof LogFeedSchema>;
 
-/** 前回コピー（8A）のコピー元候補。 */
+/** 前回コピー（8A）のコピー元候補。選ぶとそのまま内容プレビューになる。 */
 export const CopySourceSchema = z.object({
   id: z.string(),
   name: z.string(),
   date: z.string(),
   exerciseCount: z.number().int(),
   volumeKg: z.number(),
+  exercises: z.array(ExerciseRecordSchema),
 });
 export type CopySource = z.infer<typeof CopySourceSchema>;
+
+/** 前回コピーの実行入力。bumpKg は全セットの重量に一律加算する。 */
+export const CopySessionInput = z.object({
+  sourceId: z.string().uuid(),
+  bumpKg: z.number().default(0),
+});
+export type CopySessionValue = z.infer<typeof CopySessionInput>;
 
 /** 休憩タイマー（9A）が必要とするセッション文脈。 */
 export const RestContextSchema = z.object({
@@ -142,6 +150,8 @@ export const LogFeedQuery = z.object({
   page: z.number().int().min(1).default(1).catch(1),
   /** フリーワード検索。空白区切りの AND 検索で、空文字＝絞り込みなし。 */
   q: z.string().trim().default("").catch(""),
+  /** 部位での絞り込み（例: "胸"）。空文字＝絞り込みなし。トレーニング行だけが持つ。 */
+  part: z.string().trim().default("").catch(""),
 });
 export type LogFeedQueryInput = z.infer<typeof LogFeedQuery>;
 
@@ -303,6 +313,8 @@ export const UpdateSetInput = z.object({
   weight_kg: z.number().nonnegative().optional(),
   reps: z.number().int().nonnegative().optional(),
   rpe: z.number().nullable().optional(),
+  /** そのセット後に取った休憩（秒）。休憩タイマー（9A）が書き込む。 */
+  rest_sec: z.number().int().nonnegative().nullable().optional(),
   done: z.boolean().optional(),
   duration_min: z.number().nonnegative().nullable().optional(),
   distance_km: z.number().nonnegative().nullable().optional(),
