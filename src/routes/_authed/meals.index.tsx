@@ -5,7 +5,7 @@ import { PageShell } from "@/components/kirog/console";
 import { MealLogger } from "@/components/meals/meal-logger";
 import { dailyMealsQueryOptions } from "@/server/meals";
 
-export const Route = createFileRoute("/_authed/meals")({
+export const Route = createFileRoute("/_authed/meals/")({
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(dailyMealsQueryOptions()),
   component: MealsPage,

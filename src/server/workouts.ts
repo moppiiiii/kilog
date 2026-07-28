@@ -2,7 +2,15 @@ import { queryOptions } from "@tanstack/react-query";
 import { notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 
-import { dow, monthDay, num, signedPct, todayIso, toneOf } from "@/lib/format";
+import {
+  addDaysIso,
+  dow,
+  monthDay,
+  num,
+  signedPct,
+  todayIso,
+  toneOf,
+} from "@/lib/format";
 import { $supabaseServer } from "@/lib/supabase/server";
 import type { MealEntryRead } from "@/schemas/meals";
 import {
@@ -36,13 +44,6 @@ import {
 // ここは view-model への整形と serverFn / queryOptions だけを持つ（auth.ts と同じ形）。
 
 const LOG_PAGE_SIZE = 10;
-
-/** iso 日付（YYYY-MM-DD）に日数を足し引きする。UTC 基準で桁だけ動かす純計算。 */
-function addDaysIso(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 /** 期間フィルタの開始日（この日以降を残す）。all は無制限。今日から遡るローリング窓。 */
 function periodStartIso(period: LogFeedQueryInput["period"]): string | null {
@@ -119,6 +120,7 @@ function trainingRow(read: SessionRead, previous: SessionRead | null): LogRow {
   return {
     id: `t-${read.id}`,
     date: monthDay(read.date),
+    iso: read.date,
     dow: dow(read.date),
     kind: "training",
     title: read.title,
@@ -138,6 +140,7 @@ function mealRow(date: string, entries: MealEntryRead[]): LogRow {
   return {
     id: `m-${date}`,
     date: monthDay(date),
+    iso: date,
     dow: dow(date),
     kind: "meal",
     title: `1日の食事 ${entries.length}品`,

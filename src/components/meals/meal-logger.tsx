@@ -1,5 +1,7 @@
 import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
+import type { QueryKey } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
+import type * as React from "react";
 import { useState } from "react";
 
 import {
@@ -20,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAddMealEntry } from "@/hooks/use-add-meal-entry";
 import { useRemoveMealEntry } from "@/hooks/use-remove-meal-entry";
-import { dec, stampDate } from "@/lib/format";
+import { addDaysIso, dec, stampDate, todayIso } from "@/lib/format";
 import { dayKcal, dayMacros, groupKcal, groupMacros, pct } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type {
@@ -33,10 +35,17 @@ import { ManualMealEntryInput, ManualMealFormSchema } from "@/schemas/meals";
 
 // 5A: 食事の記録画面。食品検索と PFC 集計。
 
-export function MealLogger({ data }: { data: DailyMeals }) {
+export function MealLogger({
+  data,
+  queryKey,
+}: {
+  data: DailyMeals;
+  /** 購読中の日のキャッシュキー（当日 or /meals/$date）。楽観更新の対象。 */
+  queryKey?: QueryKey;
+}) {
   const navigate = useNavigate();
-  const addEntry = useAddMealEntry();
-  const removeEntry = useRemoveMealEntry();
+  const addEntry = useAddMealEntry(queryKey);
+  const removeEntry = useRemoveMealEntry(queryKey);
   // 追加UIを開いているスロット（null=すべて閉じている）。追加先は開いたカード＝そのスロットで自明。
   const [openSlot, setOpenSlot] = useState<MealSlotValue | null>(null);
 
@@ -64,6 +73,7 @@ export function MealLogger({ data }: { data: DailyMeals }) {
       position: 0,
     });
 
+  const today = todayIso();
   const totalKcal = dayKcal(data.groups);
   const totals = dayMacros(data.groups);
 
@@ -94,12 +104,25 @@ export function MealLogger({ data }: { data: DailyMeals }) {
   return (
     <Panel>
       <TopBar>
-        <PanelTitle>食事を記録</PanelTitle>
+        <PanelTitle sub={data.date === today ? undefined : "過去日の記録"}>
+          食事を記録
+        </PanelTitle>
         <div className="flex flex-wrap items-center justify-end gap-2.5">
           <div className="border-k-line bg-k-raised text-k-fg-sub flex items-center gap-2 rounded-[9px] border px-3.5 py-1.5 font-mono text-[13px]">
-            <span className="text-k-accent">◂</span>
+            <DayLink date={addDaysIso(data.date, -1)} label="前日へ">
+              ◂
+            </DayLink>
             {stampDate(data.date)}
-            <span className="text-k-accent">▸</span>
+            {/* 未来の日付は記録しないので、当日より先へは進めない。 */}
+            {addDaysIso(data.date, 1) <= today ? (
+              <DayLink date={addDaysIso(data.date, 1)} label="翌日へ">
+                ▸
+              </DayLink>
+            ) : (
+              <span className="text-k-fg-faint" aria-hidden>
+                ▸
+              </span>
+            )}
           </div>
           <Button
             size="sm"
@@ -301,6 +324,33 @@ export function MealLogger({ data }: { data: DailyMeals }) {
         </Pane>
       </SplitBody>
     </Panel>
+  );
+}
+
+/** 前後の日へ移動する 1 マス。当日は正規 URL の /meals、それ以外は /meals/$date を指す。 */
+function DayLink({
+  date,
+  label,
+  children,
+}: {
+  date: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const className = "text-k-accent hover:text-k-fg transition-colors";
+  return date === todayIso() ? (
+    <Link to="/meals" aria-label={label} className={className}>
+      {children}
+    </Link>
+  ) : (
+    <Link
+      to="/meals/$date"
+      params={{ date }}
+      aria-label={label}
+      className={className}
+    >
+      {children}
+    </Link>
   );
 }
 

@@ -68,7 +68,10 @@ export type WorkoutSession = z.infer<typeof WorkoutSessionSchema>;
 /** 一覧（3A）の 1 行。トレーニングと食事が同じ時系列に混ざる。 */
 export const LogRowSchema = z.object({
   id: z.string(),
+  /** 表示用の日付（"07/28"）。 */
   date: z.string(),
+  /** ISO 日付（YYYY-MM-DD）。食事行のリンク先（/meals/$date）に使う。 */
+  iso: z.string(),
   dow: z.string(),
   kind: z.enum(["training", "meal"]),
   title: z.string(),

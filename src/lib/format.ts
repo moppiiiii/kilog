@@ -57,6 +57,13 @@ export function todayIso(): string {
   }).format(new Date());
 }
 
+/** ISO 日付（YYYY-MM-DD）に日数を足し引きする。UTC 基準で桁だけ動かす純計算。 */
+export function addDaysIso(iso: string, delta: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * ISO タイムスタンプ → JST の "H:mm"（時は 0 埋めなし。例: "8:30" / "19:00"）。
  * セッション名の自動生成に使う。toISOString() は UTC なので Intl で JST 変換する。

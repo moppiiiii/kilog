@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
-import { kg, monthDay, monthLabel, todayIso } from "@/lib/format";
+import { addDaysIso, kg, monthDay, monthLabel, todayIso } from "@/lib/format";
 import { estimateOneRm } from "@/lib/metrics";
 import { $supabaseServer } from "@/lib/supabase/server";
 import type { MealEntryRead } from "@/schemas/meals";
@@ -24,13 +24,6 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
 const toTons = (kgValue: number) => round1(kgValue / 1000);
 
 // ── 期間ウィンドウの計算（すべて JST の todayIso() を起点にした ISO 日付） ──
-
-/** ISO 日付（YYYY-MM-DD）に日数を足し引きする（UTC 基準の純計算）。 */
-function addDaysIso(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 /** 2 つの ISO 日付の差（日数）。同日なら 0。 */
 function dayDiff(fromIso: string, iso: string): number {

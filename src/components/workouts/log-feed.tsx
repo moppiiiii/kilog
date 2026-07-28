@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import type * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Badge,
@@ -12,7 +12,7 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
-import { num, toneClass } from "@/lib/format";
+import { num, todayIso, toneClass } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { LogFeed, LogFeedQueryInput } from "@/schemas/workouts";
 
@@ -40,6 +40,7 @@ export function LogFeedView({
 }) {
   // 絞り込み・ページングはサーバ側（getLogFeed）で確定済み。ここは表示のみ。
   const rows = feed.rows;
+  const today = todayIso();
   const pageCount = Math.max(1, Math.ceil(feed.total / feed.pageSize));
   const rangeFrom = feed.total === 0 ? 0 : (feed.page - 1) * feed.pageSize + 1;
   const rangeTo = Math.min(feed.page * feed.pageSize, feed.total);
@@ -189,16 +190,35 @@ export function LogFeedView({
 
                 const rowClass =
                   "border-k-line-soft grid grid-cols-[100px_1fr_110px_130px_80px] items-center gap-4 border-b px-6 py-4";
+                const linkClass = cn(
+                  rowClass,
+                  "hover:bg-k-raised transition-colors",
+                );
+
+                // 食事行はその日の食事記録へ。当日は正規 URL の /meals を指す。
+                if (row.kind === "meal") {
+                  return row.iso === today ? (
+                    <Link key={row.id} to="/meals" className={linkClass}>
+                      {content}
+                    </Link>
+                  ) : (
+                    <Link
+                      key={row.id}
+                      to="/meals/$date"
+                      params={{ date: row.iso }}
+                      className={linkClass}
+                    >
+                      {content}
+                    </Link>
+                  );
+                }
 
                 return row.sessionId ? (
                   <Link
                     key={row.id}
                     to="/history/$sessionId"
                     params={{ sessionId: row.sessionId }}
-                    className={cn(
-                      rowClass,
-                      "hover:bg-k-raised transition-colors",
-                    )}
+                    className={linkClass}
                   >
                     {content}
                   </Link>
@@ -260,32 +280,45 @@ export function LogFeedView({
 const SEARCH_DEBOUNCE_MS = 250;
 
 /**
- * フリーワード検索。値は search params（q）が正で、入力欄は debounce して追従させる。
+ * フリーワード検索。入力欄がローカルの正で、止まったら search params（q）へ反映する。
  * 絞り込みは serverFn 側（getLogFeed）で行うので、ここは search を書き換えるだけ。
+ *
+ * 入力を壊さないための約束が 2 つある。
+ * - 自分がコミットした q は committed に控え、URL 側の変化が「外部由来（戻る/進む）」の
+ *   ときだけ入力欄へ反映する。区別しないと debounce 中に打った文字が巻き戻る。
+ * - IME 変換中（composing）はコミットも反映もしない。未確定の value を外から書き換えると
+ *   IME が未確定文字を再挿入して重複入力になる。
  */
 function SearchBox({ filter }: { filter: LogFeedQueryInput }) {
   const navigate = useNavigate();
   const [text, setText] = useState(filter.q);
+  // 変換終了で commit を再開したいので ref ではなく state（effect の依存に入れる）。
+  const [composing, setComposing] = useState(false);
+  const committed = useRef(filter.q);
 
-  // 戻る/進む・リンク遷移で q が変わったら入力欄も合わせる。
-  // 入力途中の末尾スペースを消さないよう、trim して一致するときは触らない。
+  // 外部由来（戻る/進む・リンク遷移）で q が変わったときだけ入力欄を合わせる。
   useEffect(() => {
-    setText((current) => (current.trim() === filter.q ? current : filter.q));
-  }, [filter.q]);
+    if (composing || filter.q === committed.current) return;
+    committed.current = filter.q;
+    setText(filter.q);
+  }, [filter.q, composing]);
 
   // 入力が止まってから search を更新。履歴を汚さないよう replace で置き換える。
   useEffect(() => {
+    if (composing) return;
     const next = text.trim();
-    if (next === filter.q) return;
+    if (next === committed.current) return;
     const timer = setTimeout(() => {
+      committed.current = next;
       void navigate({
         to: "/history",
-        search: { ...filter, q: next, page: 1 },
+        // 関数形式にして、他の絞り込み（kind/period）の変化でタイマーが再起動しないようにする。
+        search: (prev) => ({ ...prev, q: next, page: 1 }),
         replace: true,
       });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [text, filter, navigate]);
+  }, [text, composing, navigate]);
 
   return (
     <div className="border-k-line bg-k-raised focus-within:border-k-accent-edge flex w-[200px] items-center gap-2.5 rounded-[9px] border px-3.5 py-2 text-[13px] transition-colors">
@@ -296,6 +329,12 @@ function SearchBox({ filter }: { filter: LogFeedQueryInput }) {
         type="search"
         value={text}
         onChange={(event) => setText(event.target.value)}
+        onCompositionStart={() => setComposing(true)}
+        // 確定値は composition の後に onChange が来ない環境があるのでここでも拾う。
+        onCompositionEnd={(event) => {
+          setComposing(false);
+          setText(event.currentTarget.value);
+        }}
         placeholder="記録を検索"
         aria-label="記録を検索"
         className="text-k-fg placeholder:text-k-fg-faint min-w-0 flex-1 bg-transparent outline-none [&::-webkit-search-cancel-button]:hidden"

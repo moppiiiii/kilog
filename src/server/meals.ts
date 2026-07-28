@@ -6,6 +6,7 @@ import { $supabaseServer } from "@/lib/supabase/server";
 import {
   AddMealEntryInput,
   type DailyMeals,
+  DailyMealsQuery,
   type FoodSuggestion,
   type MealGroup,
   MealSlot,
@@ -16,14 +17,15 @@ import {
 
 import { loadProfile } from "./profile.server";
 
-// meal_entries（当日）を slot でグルーピングし、profiles の目標値と foods の候補を添える。
-// kcal / PFC は記録行が持つ値をそのまま使う（自前で再計算しない）。
+// meal_entries（指定日・既定は当日）を slot でグルーピングし、profiles の目標値と
+// foods の候補を添える。kcal / PFC は記録行が持つ値をそのまま使う（自前で再計算しない）。
 
-export const getDailyMeals = createServerFn().handler(
-  async (): Promise<DailyMeals> => {
+export const getDailyMeals = createServerFn()
+  .validator(DailyMealsQuery)
+  .handler(async ({ data }): Promise<DailyMeals> => {
     const $supabase = await $supabaseServer();
     const profile = await loadProfile($supabase);
-    const date = todayIso();
+    const date = data.date ?? todayIso();
 
     const entries = (
       await $supabase("@select/meal_entries", {
@@ -66,13 +68,13 @@ export const getDailyMeals = createServerFn().handler(
       groups,
       suggestions,
     };
-  },
-);
+  });
 
-export const dailyMealsQueryOptions = () =>
+/** date 省略＝当日。キーも "today" のままにして当日の購読・楽観更新を安定させる。 */
+export const dailyMealsQueryOptions = (date?: string) =>
   queryOptions({
-    queryKey: ["meals", "today"],
-    queryFn: () => getDailyMeals(),
+    queryKey: ["meals", date ?? "today"],
+    queryFn: () => getDailyMeals({ data: { date } }),
   });
 
 // ─── 記録の書き込み（mutation） ──────────────────────────────────────────────

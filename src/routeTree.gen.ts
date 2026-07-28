@@ -13,13 +13,14 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteRouteImport } from './routes/_authed/route'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthedMenusRouteImport } from './routes/_authed/menus'
-import { Route as AuthedMealsRouteImport } from './routes/_authed/meals'
 import { Route as AuthedBodyRouteImport } from './routes/_authed/body'
 import { Route as AuthedAccountRouteImport } from './routes/_authed/account'
 import { Route as AuthedReportIndexRouteImport } from './routes/_authed/report.index'
+import { Route as AuthedMealsIndexRouteImport } from './routes/_authed/meals.index'
 import { Route as AuthedLogIndexRouteImport } from './routes/_authed/log.index'
 import { Route as AuthedHistoryIndexRouteImport } from './routes/_authed/history.index'
 import { Route as AuthedReportExerciseIdRouteImport } from './routes/_authed/report.$exerciseId'
+import { Route as AuthedMealsDateRouteImport } from './routes/_authed/meals.$date'
 import { Route as AuthedLogTimerRouteImport } from './routes/_authed/log.timer'
 import { Route as AuthedLogCopyRouteImport } from './routes/_authed/log.copy'
 import { Route as AuthedLogSessionIdRouteImport } from './routes/_authed/log.$sessionId'
@@ -44,11 +45,6 @@ const AuthedMenusRoute = AuthedMenusRouteImport.update({
   path: '/menus',
   getParentRoute: () => AuthedRouteRoute,
 } as any)
-const AuthedMealsRoute = AuthedMealsRouteImport.update({
-  id: '/meals',
-  path: '/meals',
-  getParentRoute: () => AuthedRouteRoute,
-} as any)
 const AuthedBodyRoute = AuthedBodyRouteImport.update({
   id: '/body',
   path: '/body',
@@ -64,6 +60,11 @@ const AuthedReportIndexRoute = AuthedReportIndexRouteImport.update({
   path: '/report/',
   getParentRoute: () => AuthedRouteRoute,
 } as any)
+const AuthedMealsIndexRoute = AuthedMealsIndexRouteImport.update({
+  id: '/meals/',
+  path: '/meals/',
+  getParentRoute: () => AuthedRouteRoute,
+} as any)
 const AuthedLogIndexRoute = AuthedLogIndexRouteImport.update({
   id: '/log/',
   path: '/log/',
@@ -77,6 +78,11 @@ const AuthedHistoryIndexRoute = AuthedHistoryIndexRouteImport.update({
 const AuthedReportExerciseIdRoute = AuthedReportExerciseIdRouteImport.update({
   id: '/report/$exerciseId',
   path: '/report/$exerciseId',
+  getParentRoute: () => AuthedRouteRoute,
+} as any)
+const AuthedMealsDateRoute = AuthedMealsDateRouteImport.update({
+  id: '/meals/$date',
+  path: '/meals/$date',
   getParentRoute: () => AuthedRouteRoute,
 } as any)
 const AuthedLogTimerRoute = AuthedLogTimerRouteImport.update({
@@ -105,31 +111,33 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/account': typeof AuthedAccountRoute
   '/body': typeof AuthedBodyRoute
-  '/meals': typeof AuthedMealsRoute
   '/menus': typeof AuthedMenusRoute
   '/history/$sessionId': typeof AuthedHistorySessionIdRoute
   '/log/$sessionId': typeof AuthedLogSessionIdRoute
   '/log/copy': typeof AuthedLogCopyRoute
   '/log/timer': typeof AuthedLogTimerRoute
+  '/meals/$date': typeof AuthedMealsDateRoute
   '/report/$exerciseId': typeof AuthedReportExerciseIdRoute
   '/history/': typeof AuthedHistoryIndexRoute
   '/log/': typeof AuthedLogIndexRoute
+  '/meals/': typeof AuthedMealsIndexRoute
   '/report/': typeof AuthedReportIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/account': typeof AuthedAccountRoute
   '/body': typeof AuthedBodyRoute
-  '/meals': typeof AuthedMealsRoute
   '/menus': typeof AuthedMenusRoute
   '/': typeof AuthedIndexRoute
   '/history/$sessionId': typeof AuthedHistorySessionIdRoute
   '/log/$sessionId': typeof AuthedLogSessionIdRoute
   '/log/copy': typeof AuthedLogCopyRoute
   '/log/timer': typeof AuthedLogTimerRoute
+  '/meals/$date': typeof AuthedMealsDateRoute
   '/report/$exerciseId': typeof AuthedReportExerciseIdRoute
   '/history': typeof AuthedHistoryIndexRoute
   '/log': typeof AuthedLogIndexRoute
+  '/meals': typeof AuthedMealsIndexRoute
   '/report': typeof AuthedReportIndexRoute
 }
 export interface FileRoutesById {
@@ -138,16 +146,17 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authed/account': typeof AuthedAccountRoute
   '/_authed/body': typeof AuthedBodyRoute
-  '/_authed/meals': typeof AuthedMealsRoute
   '/_authed/menus': typeof AuthedMenusRoute
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/history/$sessionId': typeof AuthedHistorySessionIdRoute
   '/_authed/log/$sessionId': typeof AuthedLogSessionIdRoute
   '/_authed/log/copy': typeof AuthedLogCopyRoute
   '/_authed/log/timer': typeof AuthedLogTimerRoute
+  '/_authed/meals/$date': typeof AuthedMealsDateRoute
   '/_authed/report/$exerciseId': typeof AuthedReportExerciseIdRoute
   '/_authed/history/': typeof AuthedHistoryIndexRoute
   '/_authed/log/': typeof AuthedLogIndexRoute
+  '/_authed/meals/': typeof AuthedMealsIndexRoute
   '/_authed/report/': typeof AuthedReportIndexRoute
 }
 export interface FileRouteTypes {
@@ -157,31 +166,33 @@ export interface FileRouteTypes {
     | '/login'
     | '/account'
     | '/body'
-    | '/meals'
     | '/menus'
     | '/history/$sessionId'
     | '/log/$sessionId'
     | '/log/copy'
     | '/log/timer'
+    | '/meals/$date'
     | '/report/$exerciseId'
     | '/history/'
     | '/log/'
+    | '/meals/'
     | '/report/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/account'
     | '/body'
-    | '/meals'
     | '/menus'
     | '/'
     | '/history/$sessionId'
     | '/log/$sessionId'
     | '/log/copy'
     | '/log/timer'
+    | '/meals/$date'
     | '/report/$exerciseId'
     | '/history'
     | '/log'
+    | '/meals'
     | '/report'
   id:
     | '__root__'
@@ -189,16 +200,17 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authed/account'
     | '/_authed/body'
-    | '/_authed/meals'
     | '/_authed/menus'
     | '/_authed/'
     | '/_authed/history/$sessionId'
     | '/_authed/log/$sessionId'
     | '/_authed/log/copy'
     | '/_authed/log/timer'
+    | '/_authed/meals/$date'
     | '/_authed/report/$exerciseId'
     | '/_authed/history/'
     | '/_authed/log/'
+    | '/_authed/meals/'
     | '/_authed/report/'
   fileRoutesById: FileRoutesById
 }
@@ -237,13 +249,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedMenusRouteImport
       parentRoute: typeof AuthedRouteRoute
     }
-    '/_authed/meals': {
-      id: '/_authed/meals'
-      path: '/meals'
-      fullPath: '/meals'
-      preLoaderRoute: typeof AuthedMealsRouteImport
-      parentRoute: typeof AuthedRouteRoute
-    }
     '/_authed/body': {
       id: '/_authed/body'
       path: '/body'
@@ -265,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedReportIndexRouteImport
       parentRoute: typeof AuthedRouteRoute
     }
+    '/_authed/meals/': {
+      id: '/_authed/meals/'
+      path: '/meals'
+      fullPath: '/meals/'
+      preLoaderRoute: typeof AuthedMealsIndexRouteImport
+      parentRoute: typeof AuthedRouteRoute
+    }
     '/_authed/log/': {
       id: '/_authed/log/'
       path: '/log'
@@ -284,6 +296,13 @@ declare module '@tanstack/react-router' {
       path: '/report/$exerciseId'
       fullPath: '/report/$exerciseId'
       preLoaderRoute: typeof AuthedReportExerciseIdRouteImport
+      parentRoute: typeof AuthedRouteRoute
+    }
+    '/_authed/meals/$date': {
+      id: '/_authed/meals/$date'
+      path: '/meals/$date'
+      fullPath: '/meals/$date'
+      preLoaderRoute: typeof AuthedMealsDateRouteImport
       parentRoute: typeof AuthedRouteRoute
     }
     '/_authed/log/timer': {
@@ -320,32 +339,34 @@ declare module '@tanstack/react-router' {
 interface AuthedRouteRouteChildren {
   AuthedAccountRoute: typeof AuthedAccountRoute
   AuthedBodyRoute: typeof AuthedBodyRoute
-  AuthedMealsRoute: typeof AuthedMealsRoute
   AuthedMenusRoute: typeof AuthedMenusRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
   AuthedHistorySessionIdRoute: typeof AuthedHistorySessionIdRoute
   AuthedLogSessionIdRoute: typeof AuthedLogSessionIdRoute
   AuthedLogCopyRoute: typeof AuthedLogCopyRoute
   AuthedLogTimerRoute: typeof AuthedLogTimerRoute
+  AuthedMealsDateRoute: typeof AuthedMealsDateRoute
   AuthedReportExerciseIdRoute: typeof AuthedReportExerciseIdRoute
   AuthedHistoryIndexRoute: typeof AuthedHistoryIndexRoute
   AuthedLogIndexRoute: typeof AuthedLogIndexRoute
+  AuthedMealsIndexRoute: typeof AuthedMealsIndexRoute
   AuthedReportIndexRoute: typeof AuthedReportIndexRoute
 }
 
 const AuthedRouteRouteChildren: AuthedRouteRouteChildren = {
   AuthedAccountRoute: AuthedAccountRoute,
   AuthedBodyRoute: AuthedBodyRoute,
-  AuthedMealsRoute: AuthedMealsRoute,
   AuthedMenusRoute: AuthedMenusRoute,
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedHistorySessionIdRoute: AuthedHistorySessionIdRoute,
   AuthedLogSessionIdRoute: AuthedLogSessionIdRoute,
   AuthedLogCopyRoute: AuthedLogCopyRoute,
   AuthedLogTimerRoute: AuthedLogTimerRoute,
+  AuthedMealsDateRoute: AuthedMealsDateRoute,
   AuthedReportExerciseIdRoute: AuthedReportExerciseIdRoute,
   AuthedHistoryIndexRoute: AuthedHistoryIndexRoute,
   AuthedLogIndexRoute: AuthedLogIndexRoute,
+  AuthedMealsIndexRoute: AuthedMealsIndexRoute,
   AuthedReportIndexRoute: AuthedReportIndexRoute,
 }
 

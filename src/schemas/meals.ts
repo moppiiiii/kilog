@@ -134,6 +134,18 @@ export const MealEntryReadSchema = MealEntryEntitySchema.pick({
 });
 export type MealEntryRead = z.infer<typeof MealEntryReadSchema>;
 
+/** ISO 日付（YYYY-MM-DD）。URL のパスパラメータ・serverFn の入力で共有する。 */
+export const IsoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 形式で指定してください");
+
+/**
+ * 食事画面が読む日付。省略＝当日（/meals）、指定＝その日（/meals/$date）。
+ * 日付の解決はサーバ側（JST の todayIso）に任せる。
+ */
+export const DailyMealsQuery = z.object({ date: IsoDate.optional() });
+export type DailyMealsQueryInput = z.infer<typeof DailyMealsQuery>;
+
 /** serverFn の入力契約（zod は schemas/ に集約）。 */
 export const AddMealEntryInput = z.object({
   date: z.string(),
