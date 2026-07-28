@@ -285,6 +285,19 @@ export const UpdateSessionInput = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+/** セッションのメタ情報（名前・部位・メモ・タグ）の更新。記録画面から書き込む。 */
+export const UpdateSessionMetaInput = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1).optional(),
+  parts: z.array(z.string()).optional(),
+  note: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+export type UpdateSessionMetaValue = z.infer<typeof UpdateSessionMetaInput>;
+
+/** メモ・タグから「PB更新」を立てるためのタグ名（personalBest の判定に使う）。 */
+export const PB_TAG = "PB更新";
+
 export const AddSessionExerciseInput = z.object({
   id: z.string().uuid(),
   session_id: z.string().uuid(),

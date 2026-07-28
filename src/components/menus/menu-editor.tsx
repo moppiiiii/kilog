@@ -13,6 +13,7 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { TagInput } from "@/components/kirog/tag-input";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useMenuEditor } from "@/hooks/use-menu-editor";
@@ -43,47 +44,49 @@ export function MenuEditor({
   const navigate = useNavigate();
   const editor = useMenuEditor();
   const [search, setSearch] = useState("");
-  const [partDraft, setPartDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const createMenu = async () => {
+  // どれも失敗時は遷移しない（理由はトーストに出る）。
+  const createMenu = () => {
     const id = crypto.randomUUID();
-    await editor.create.mutateAsync({
-      id,
-      kind,
-      name: NEW_MENU_NAME,
-      icon: ICONS[0] ?? "🏋️",
-      parts: [],
-      estimated_min: 0,
-      favorite: false,
-      position: menus.length,
+    editor.create.mutate(
+      {
+        id,
+        kind,
+        name: NEW_MENU_NAME,
+        icon: ICONS[0] ?? "🏋️",
+        parts: [],
+        estimated_min: 0,
+        favorite: false,
+        position: menus.length,
+      },
+      {
+        onSuccess: () =>
+          void navigate({ to: "/menus", search: { kind, menu: id } }),
+      },
+    );
+  };
+
+  const removeMenu = () => {
+    if (!selected) return;
+    editor.remove.mutate(selected.id, {
+      onSuccess: () =>
+        void navigate({ to: "/menus", search: { kind, menu: undefined } }),
     });
-    void navigate({ to: "/menus", search: { kind, menu: id } });
   };
 
-  const removeMenu = async () => {
+  const startSession = () => {
     if (!selected) return;
-    await editor.remove.mutateAsync(selected.id);
-    void navigate({ to: "/menus", search: { kind, menu: undefined } });
-  };
-
-  const startSession = async () => {
-    if (!selected) return;
-    await editor.start.mutateAsync({ menuId: selected.id });
-    void navigate({ to: "/log" });
+    editor.start.mutate(
+      { menuId: selected.id },
+      { onSuccess: () => void navigate({ to: "/log" }) },
+    );
   };
 
   /** メニュー本体（名前・アイコン・部位タグ）の部分更新。 */
   const patch = (value: { name?: string; icon?: string; parts?: string[] }) => {
     if (!selected) return;
     editor.update.mutate({ id: selected.id, ...value });
-  };
-
-  const addPart = () => {
-    const part = partDraft.trim();
-    if (!selected || part === "" || selected.parts.includes(part)) return;
-    patch({ parts: [...selected.parts, part] });
-    setPartDraft("");
   };
 
   const usedExerciseIds = new Set(selected?.exercises.map((e) => e.id) ?? []);
@@ -142,7 +145,7 @@ export function MenuEditor({
             size="sm"
             className="bg-k-chip rounded-[9px]"
             disabled={editor.create.isPending}
-            onClick={() => void createMenu()}
+            onClick={createMenu}
           >
             ＋ 新規メニュー
           </Button>
@@ -164,7 +167,7 @@ export function MenuEditor({
                 confirmLabel="削除する"
                 onConfirm={() => {
                   setConfirmingDelete(false);
-                  void removeMenu();
+                  removeMenu();
                 }}
                 onCancel={() => setConfirmingDelete(false)}
               />
@@ -172,7 +175,7 @@ export function MenuEditor({
                 size="sm"
                 className="rounded-[9px] font-bold"
                 disabled={editor.start.isPending}
-                onClick={() => void startSession()}
+                onClick={startSession}
               >
                 {editor.start.isPending ? "作成中…" : "このメニューで開始 →"}
               </Button>
@@ -224,7 +227,7 @@ export function MenuEditor({
               );
             })}
           </div>
-          <DashedAction className="mt-3" onClick={() => void createMenu()}>
+          <DashedAction className="mt-3" onClick={createMenu}>
             ＋ メニューを追加
           </DashedAction>
         </Pane>
@@ -276,36 +279,12 @@ export function MenuEditor({
 
             <div className="mb-5.5 flex flex-wrap items-center gap-2.5">
               <span className="text-k-fg-dim text-xs">部位タグ</span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {selected.parts.map((part) => (
-                  <button
-                    key={part}
-                    type="button"
-                    aria-label={`${part} を外す`}
-                    onClick={() =>
-                      patch({
-                        parts: selected.parts.filter((item) => item !== part),
-                      })
-                    }
-                    className="border-k-accent-edge bg-k-accent-bg text-k-accent-soft rounded-2xl border px-3 py-1.5 text-xs"
-                  >
-                    {part} <span className="opacity-60">✕</span>
-                  </button>
-                ))}
-                <input
-                  value={partDraft}
-                  onChange={(event) => setPartDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    addPart();
-                  }}
-                  onBlur={addPart}
-                  placeholder="＋ 部位"
-                  aria-label="部位タグを追加"
-                  className="border-k-line-strong bg-k-chip text-k-fg placeholder:text-k-fg-faint w-24 rounded-2xl border px-3 py-1.5 text-xs outline-none"
-                />
-              </div>
+              <TagInput
+                values={selected.parts}
+                onChange={(parts) => patch({ parts })}
+                placeholder="＋ 部位"
+                label="部位タグを追加"
+              />
             </div>
 
             <SectionTitle
@@ -404,7 +383,7 @@ export function MenuEditor({
               size="sm"
               className="rounded-[9px] font-bold"
               disabled={editor.create.isPending}
-              onClick={() => void createMenu()}
+              onClick={createMenu}
             >
               ＋ 最初のメニューを作る
             </Button>

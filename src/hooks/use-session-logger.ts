@@ -10,6 +10,7 @@ import type {
   AddSetValue,
   ConfirmSessionInput,
   CreateSessionValue,
+  UpdateSessionMetaValue,
   UpdateSetInputValue,
   WorkoutSession,
 } from "@/schemas/workouts";
@@ -22,6 +23,7 @@ import {
   removeSession,
   removeSessionExercise,
   removeSet,
+  updateSession,
   updateSet,
 } from "@/server/workouts";
 
@@ -140,6 +142,12 @@ export function useSessionLogger(
     onSettled: invalidate,
   });
 
+  // 名前・部位・メモ・タグ。頻度が低く見た目の即時性も要らないので再取得で確定する。
+  const updateMeta = useMutation({
+    mutationFn: (data: UpdateSessionMetaValue) => updateSession({ data }),
+    onSettled: invalidate,
+  });
+
   const confirm = useMutation({
     mutationFn: (data: ConfirmValue) => confirmSession({ data }),
     onSettled: invalidate,
@@ -161,6 +169,7 @@ export function useSessionLogger(
     addSet: addSetMutation,
     updateSet: updateSetMutation,
     removeSet: remove,
+    updateSession: updateMeta,
     confirm,
     removeExercise,
     removeSession: removeCurrentSession,

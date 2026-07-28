@@ -49,10 +49,13 @@ export function CopySession({
     0,
   );
 
-  const start = async () => {
+  // 失敗時は遷移しない（理由はトーストに出る）。
+  const start = () => {
     if (!selected) return;
-    await copy.mutateAsync({ sourceId: selected.id, bumpKg: bump });
-    void navigate({ to: "/log" });
+    copy.mutate(
+      { sourceId: selected.id, bumpKg: bump },
+      { onSuccess: () => void navigate({ to: "/log" }) },
+    );
   };
 
   return (
@@ -81,7 +84,7 @@ export function CopySession({
             size="sm"
             className="rounded-[9px] font-bold"
             disabled={!selected || copy.isPending}
-            onClick={() => void start()}
+            onClick={start}
           >
             {copy.isPending ? "作成中…" : "この内容で開始 →"}
           </Button>

@@ -69,7 +69,9 @@ export function ConsoleDashboard({
           label="STREAK"
           value={num(data.streakDays)}
           unit="日連続"
-          foot="記録を継続中"
+          foot={
+            data.streakDays > 0 ? "トレーニングを継続中" : "今日から再開しよう"
+          }
         />
       </KpiStrip>
 

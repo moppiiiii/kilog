@@ -30,6 +30,7 @@ import {
   SessionIdInput,
   type SessionRead,
   SetIdInput,
+  UpdateSessionMetaInput,
   UpdateSetInput,
   type WorkoutSession,
 } from "@/schemas/workouts";
@@ -246,6 +247,7 @@ export const getLogFeed = createServerFn()
   .validator(LogFeedQuery)
   .handler(async ({ data }): Promise<LogFeed> => {
     const { kind, period, page, q, part } = data;
+    const $supabase = await $supabaseServer();
     const sessions = await loadSessions();
     const entries = await loadMealEntries();
     const matches = makeMatcher(q);
@@ -350,6 +352,19 @@ export const getLogFeed = createServerFn()
         )
       : 0;
 
+    // 体重変化は期間の実測から出す（体重は種別・部位・検索に紐づかないので窓だけで見る）。
+    const measurements = (
+      await $supabase("@select/body_measurements", {
+        filter: (q2) => (from ? q2.gte("date", from) : q2).order("date"),
+      })
+    ).unwrapOr([]);
+    const firstWeight = measurements[0]?.weight_kg;
+    const lastWeight = measurements.at(-1)?.weight_kg;
+    const weightDeltaKg =
+      measurements.length > 1 && firstWeight != null && lastWeight != null
+        ? Math.round((lastWeight - firstWeight) * 10) / 10
+        : 0;
+
     // チップ一覧は部位フィルタ前の集合から作る（選択中でも他の部位へ切り替えられる）。
     const parts = [
       ...new Set(
@@ -367,7 +382,7 @@ export const getLogFeed = createServerFn()
         sessions: counts.training,
         volumeTons: Math.round((totalVolume / 1000) * 10) / 10,
         avgKcal,
-        weightDeltaKg: 0,
+        weightDeltaKg,
       },
       parts,
     };
@@ -584,6 +599,19 @@ export const removeSet = createServerFn({ method: "POST" })
     const $supabase = await $supabaseServer();
     const result = await $supabase("@delete/workout_sets", {
       match: { id: data.id },
+    });
+    if (result.isErr()) throw result.error;
+  });
+
+/** セッションのメタ情報（名前・部位・メモ・タグ）を更新する。 */
+export const updateSession = createServerFn({ method: "POST" })
+  .validator(UpdateSessionMetaInput)
+  .handler(async ({ data }) => {
+    const { id, ...rest } = data;
+    const $supabase = await $supabaseServer();
+    const result = await $supabase("@update/workout_sessions", {
+      data: rest,
+      match: { id },
     });
     if (result.isErr()) throw result.error;
   });

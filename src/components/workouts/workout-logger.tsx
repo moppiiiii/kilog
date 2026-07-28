@@ -6,6 +6,7 @@ import {
   Card,
   Chip,
   DashedAction,
+  MonoLabel,
   Pane,
   Panel,
   PanelTitle,
@@ -13,9 +14,11 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { TagInput } from "@/components/kirog/tag-input";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useCreateExercise } from "@/hooks/use-create-exercise";
 import { useDeleteExercise } from "@/hooks/use-delete-exercise";
 import { useSessionLogger } from "@/hooks/use-session-logger";
@@ -30,10 +33,11 @@ import {
 } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { ExerciseRead } from "@/schemas/exercises";
-import type {
-  ExerciseRecord,
-  SetRecord,
-  WorkoutSession,
+import {
+  type ExerciseRecord,
+  PB_TAG,
+  type SetRecord,
+  type WorkoutSession,
 } from "@/schemas/workouts";
 import { exercisesQueryOptions } from "@/server/exercises";
 
@@ -71,6 +75,7 @@ export function WorkoutLogger({
     addSet,
     updateSet,
     removeSet,
+    updateSession,
     confirm,
     removeExercise,
     removeSession,
@@ -193,7 +198,8 @@ export function WorkoutLogger({
     addExercise.error ??
     addSet.error ??
     updateSet.error ??
-    removeSet.error;
+    removeSet.error ??
+    updateSession.error;
 
   return (
     <Panel>
@@ -443,6 +449,15 @@ export function WorkoutLogger({
               />
             </div>
           ) : null}
+
+          {session.id ? (
+            <SessionMeta
+              session={session}
+              onChange={(patch) =>
+                updateSession.mutate({ id: session.id, ...patch })
+              }
+            />
+          ) : null}
         </Pane>
       </SplitBody>
 
@@ -454,6 +469,88 @@ export function WorkoutLogger({
         onCancel={() => setPendingConfirm(null)}
       />
     </Panel>
+  );
+}
+
+/**
+ * セッションのメタ情報（名前・部位・メモ・タグ）。すべて即時保存で、
+ * テキストは入力欄から離れたときに確定する。「PB更新」タグを付けると詳細に 🏆 が出る。
+ */
+function SessionMeta({
+  session,
+  onChange,
+}: {
+  session: WorkoutSession;
+  onChange: (patch: {
+    title?: string;
+    parts?: string[];
+    note?: string;
+    tags?: string[];
+  }) => void;
+}) {
+  const fieldClass =
+    "border-k-line-strong bg-k-well text-k-fg w-full rounded-[10px] border px-3.5 py-2.5 text-[13px] outline-none";
+
+  return (
+    <div className="mt-6 flex flex-col gap-3.5">
+      <SectionTitle>セッション情報</SectionTitle>
+
+      <div>
+        <MonoLabel className="mb-1.5">セッション名</MonoLabel>
+        <input
+          // セッションが切り替わったら入力欄も作り直す（未確定の値を持ち越さない）。
+          key={`${session.id}-title`}
+          defaultValue={session.title}
+          aria-label="セッション名"
+          className={fieldClass}
+          onBlur={(event) => {
+            const title = event.target.value.trim();
+            if (title === "" || title === session.title) {
+              event.target.value = session.title;
+              return;
+            }
+            onChange({ title });
+          }}
+        />
+      </div>
+
+      <div>
+        <MonoLabel className="mb-1.5">部位</MonoLabel>
+        <TagInput
+          values={session.parts}
+          onChange={(parts) => onChange({ parts })}
+          placeholder="＋ 部位"
+          label="部位を追加"
+        />
+      </div>
+
+      <div>
+        <MonoLabel className="mb-1.5">タグ</MonoLabel>
+        <TagInput
+          values={session.tags}
+          onChange={(tags) => onChange({ tags })}
+          placeholder={`＋ ${PB_TAG} など`}
+          label="タグを追加"
+        />
+      </div>
+
+      <div>
+        <MonoLabel className="mb-1.5">メモ</MonoLabel>
+        <Textarea
+          key={`${session.id}-note`}
+          defaultValue={session.note}
+          rows={3}
+          placeholder="コンディション・気づきなど"
+          aria-label="メモ"
+          className={cn(fieldClass, "min-h-[76px] resize-y shadow-none")}
+          onBlur={(event) => {
+            const note = event.target.value;
+            if (note === session.note) return;
+            onChange({ note });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

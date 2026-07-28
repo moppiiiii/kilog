@@ -11,7 +11,7 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
-import { num, todayIso, toneClass } from "@/lib/format";
+import { num, signed, todayIso, toneClass } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { LogFeed, LogFeedQueryInput } from "@/schemas/workouts";
 
@@ -145,9 +145,14 @@ export function LogFeedView({
             <SummaryCell label="平均kcal" value={num(feed.summary.avgKcal)} />
             <SummaryCell
               label="体重変化"
-              value={feed.summary.weightDeltaKg.toFixed(1)}
+              value={signed(feed.summary.weightDeltaKg)}
               unit="kg"
-              valueClassName="text-k-success"
+              // 減量方向を成功色に（ダッシュボードの BODY WEIGHT と同じ扱い）。
+              valueClassName={
+                feed.summary.weightDeltaKg <= 0
+                  ? "text-k-success"
+                  : "text-k-danger"
+              }
             />
           </div>
 

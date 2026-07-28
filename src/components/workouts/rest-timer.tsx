@@ -79,11 +79,16 @@ export function RestTimer({ context }: { context: RestContext }) {
   /** 直前に完了したセット＝この休憩の持ち主。未完了しか無ければ記録先は無し。 */
   const lastDoneSetId = context.doneSets.at(-1)?.id ?? null;
 
-  const finishRest = async () => {
-    if (lastDoneSetId) {
-      await recordRest.mutateAsync({ setId: lastDoneSetId, restSec: rested });
+  // 記録できたら記録画面へ。失敗時は留まる（理由はトーストに出る）。
+  const finishRest = () => {
+    if (!lastDoneSetId) {
+      void navigate({ to: "/log" });
+      return;
     }
-    void navigate({ to: "/log" });
+    recordRest.mutate(
+      { setId: lastDoneSetId, restSec: rested },
+      { onSuccess: () => void navigate({ to: "/log" }) },
+    );
   };
 
   return (
@@ -185,7 +190,7 @@ export function RestTimer({ context }: { context: RestContext }) {
           <button
             type="button"
             disabled={recordRest.isPending}
-            onClick={() => void finishRest()}
+            onClick={finishRest}
             className="text-k-accent hover:text-k-fg mt-5 text-[13px] transition-colors disabled:opacity-50"
           >
             {lastDoneSetId

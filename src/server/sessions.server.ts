@@ -3,6 +3,7 @@ import { $supabaseServer } from "@/lib/supabase/server";
 import type { MealEntryRead } from "@/schemas/meals";
 import {
   type ExerciseRecord,
+  PB_TAG,
   type SessionRead,
   type SetRecord,
   type WorkoutSession,
@@ -145,7 +146,7 @@ export function buildSession(
     avgRestSec,
     note: read.note,
     tags: read.tags,
-    personalBest: read.tags.includes("PB更新"),
+    personalBest: read.tags.includes(PB_TAG),
     exercises,
     previous: previous
       ? {
