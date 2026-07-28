@@ -1,5 +1,6 @@
 import * as z from "zod";
 
+import { WeightPointSchema } from "./body";
 import { MacrosSchema, MealSlot } from "./meals";
 
 // ダッシュボード（1A / 1B）が 1 リクエストで受け取る当日サマリー。
@@ -34,7 +35,7 @@ export const DashboardSchema = z.object({
   targetMacros: MacrosSchema,
   streakDays: z.number().int(),
   /** 直近 30 件の体重測定（古い順）。折れ線グラフ用に日付付き。 */
-  weightSeries: z.array(z.object({ date: z.string(), weightKg: z.number() })),
+  weightSeries: z.array(WeightPointSchema),
   sessionTitle: z.string(),
   exercises: z.array(DashboardExerciseSchema),
   meals: z.array(DashboardMealSchema),

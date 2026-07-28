@@ -267,7 +267,10 @@ export const getReport = createServerFn()
 
     // 体重（期間の推移）。
     const currWeights = measurements.filter((m) => inWindow(m.date, curr));
-    const weightSeries = currWeights.map((m) => m.weight_kg);
+    const weightSeries = currWeights.map((m) => ({
+      date: m.date,
+      weightKg: m.weight_kg,
+    }));
     const weightDeltaKg =
       currWeights.length > 1
         ? round1(currWeights.at(-1)!.weight_kg - currWeights[0]!.weight_kg)

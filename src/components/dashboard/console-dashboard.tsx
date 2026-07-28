@@ -1,4 +1,3 @@
-import { WeightTrend } from "@/components/dashboard/weight-trend";
 import {
   KpiCell,
   KpiStrip,
@@ -9,6 +8,7 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { WeightTrend } from "@/components/kirog/weight-trend";
 import { SlotBadge } from "@/components/meals/slot-badge";
 import { kg, num, signed, stampDate } from "@/lib/format";
 import { macroShare, pct } from "@/lib/metrics";

@@ -1,13 +1,13 @@
 import { kg, monthDay } from "@/lib/format";
+import type { WeightPoint } from "@/schemas/body";
 
 // 体重の推移（折れ線）。単一系列なので凡例は不要（タイトルが系列名）。
 // y は data の最小〜最大にズームして変化を見せ、左に kg 目盛り・下に実日付・最新値を直接ラベルする。
-
-type Point = { date: string; weightKg: number };
+// ダッシュボード（1A）とレポート（7A）で共有する。
 
 const HEIGHT = 130;
 
-export function WeightTrend({ points }: { points: Point[] }) {
+export function WeightTrend({ points }: { points: WeightPoint[] }) {
   if (points.length === 0) {
     return (
       <div

@@ -19,6 +19,13 @@ export const BodyMeasurementSchema = z.object({
 });
 export type BodyMeasurement = z.infer<typeof BodyMeasurementSchema>;
 
+/** 体重の折れ線グラフ 1 点（ダッシュボード・レポート共通）。 */
+export const WeightPointSchema = z.object({
+  date: z.string(),
+  weightKg: z.number(),
+});
+export type WeightPoint = z.infer<typeof WeightPointSchema>;
+
 export const BodyLogSchema = z.object({
   /** 最新の測定（＝入力欄の初期値）。 */
   latest: BodyMeasurementSchema,

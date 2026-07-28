@@ -15,8 +15,9 @@ import {
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { WeightTrend } from "@/components/kirog/weight-trend";
 import { num, signed, signedPct } from "@/lib/format";
-import { barHeights, macroKcal, macroShare } from "@/lib/metrics";
+import { macroKcal, macroShare } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { Report, ReportRangeValue } from "@/schemas/reports";
 
@@ -24,6 +25,12 @@ import type { Report, ReportRangeValue } from "@/schemas/reports";
 const PREV_LABEL: Record<ReportRangeValue, string> = {
   week: "前週比",
   month: "前月比",
+};
+
+/** 体重変化の分母（「−1.2kg / 月」の「月」）。 */
+const RANGE_UNIT: Record<ReportRangeValue, string> = {
+  week: "週",
+  month: "月",
 };
 
 // 7A: レポート画面。期間の総括。
@@ -269,21 +276,13 @@ export function ReportView({
             <SectionTitle
               right={
                 <span className="text-k-success font-mono text-xs">
-                  {signed(report.weightDeltaKg)}kg / 月
+                  {signed(report.weightDeltaKg)}kg / {RANGE_UNIT[range]}
                 </span>
               }
             >
               体重の推移
             </SectionTitle>
-            <div className="flex h-[70px] items-end gap-1">
-              {barHeights(report.weightSeries).map((height, index) => (
-                <div
-                  key={`${index}-${height}`}
-                  className="bg-k-edge flex-1 rounded-[2px]"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-            </div>
+            <WeightTrend points={report.weightSeries} />
           </div>
         </Pane>
       </SplitBody>
