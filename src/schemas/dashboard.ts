@@ -25,6 +25,16 @@ export const DashboardMealSchema = z.object({
 });
 export type DashboardMeal = z.infer<typeof DashboardMealSchema>;
 
+/** 体重グラフの表示期間（30日 / 90日 / 1年のローリング窓）。 */
+export const WeightRange = z.enum(["30d", "90d", "1y"]);
+export type WeightRangeValue = z.infer<typeof WeightRange>;
+
+/** ダッシュボードの search params。既定は 30 日、壊れた値でも画面を落とさない。 */
+export const DashboardQuery = z.object({
+  range: WeightRange.default("30d").catch("30d"),
+});
+export type DashboardQueryInput = z.infer<typeof DashboardQuery>;
+
 export const DashboardSchema = z.object({
   date: z.string(),
   weightKg: z.number(),

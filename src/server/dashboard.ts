@@ -1,12 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
-import { todayIso } from "@/lib/format";
+import { addDaysIso, todayIso } from "@/lib/format";
 import { $supabaseServer } from "@/lib/supabase/server";
 import {
   type Dashboard,
   type DashboardExercise,
   type DashboardMeal,
+  DashboardQuery,
+  type DashboardQueryInput,
+  type WeightRangeValue,
 } from "@/schemas/dashboard";
 import { MealSlot, type MealSlotValue } from "@/schemas/meals";
 
@@ -18,28 +21,42 @@ import { loadSessions } from "./sessions.server";
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
-export const getDashboard = createServerFn().handler(
-  async (): Promise<Dashboard> => {
+/** 体重グラフの窓幅（今日を含むローリング日数）。 */
+const RANGE_DAYS: Record<WeightRangeValue, number> = {
+  "30d": 30,
+  "90d": 90,
+  "1y": 365,
+};
+
+export const getDashboard = createServerFn()
+  .validator(DashboardQuery)
+  .handler(async ({ data }): Promise<Dashboard> => {
     const $supabase = await $supabaseServer();
     const date = todayIso();
     const profile = await loadProfile($supabase);
     const sessions = await loadSessions();
 
-    const measurements = (
+    // KPI（最新体重・前回比）はグラフの期間に依存させないので、常に直近 2 件から出す。
+    const latestTwo = (
       await $supabase("@select/body_measurements", {
-        filter: (q) => q.order("date", { ascending: false }).limit(30),
+        filter: (q) => q.order("date", { ascending: false }).limit(2),
       })
     ).unwrapOr([]);
-    const ordered = [...measurements].reverse();
-    const weightSeries = ordered.map((row) => ({
+    const weightKg = latestTwo[0]?.weight_kg ?? 0;
+    const weightDeltaKg =
+      latestTwo[1] != null ? round1(weightKg - latestTwo[1].weight_kg) : 0;
+
+    // グラフは選択期間のローリング窓（古い順）。
+    const from = addDaysIso(date, -(RANGE_DAYS[data.range] - 1));
+    const measurements = (
+      await $supabase("@select/body_measurements", {
+        filter: (q) => q.gte("date", from).order("date"),
+      })
+    ).unwrapOr([]);
+    const weightSeries = measurements.map((row) => ({
       date: row.date,
       weightKg: row.weight_kg,
     }));
-    const weightKg = measurements[0]?.weight_kg ?? 0;
-    const weightDeltaKg =
-      measurements[1] != null
-        ? round1(weightKg - measurements[1].weight_kg)
-        : 0;
 
     const entries = (
       await $supabase("@select/meal_entries", {
@@ -126,8 +143,13 @@ export const getDashboard = createServerFn().handler(
       exercises,
       meals,
     };
-  },
-);
+  });
 
-export const dashboardQueryOptions = () =>
-  queryOptions({ queryKey: ["dashboard"], queryFn: () => getDashboard() });
+/** キーは ["dashboard", ...] 配下に保つ（食事・記録の mutation が prefix で無効化する）。 */
+export const dashboardQueryOptions = (
+  query: DashboardQueryInput = { range: "30d" },
+) =>
+  queryOptions({
+    queryKey: ["dashboard", query.range],
+    queryFn: () => getDashboard({ data: query }),
+  });
