@@ -175,11 +175,9 @@ export function RestTimer({ context }: { context: RestContext }) {
             <button
               type="button"
               onClick={() => {
-                setRemaining((current) => {
-                  const next = current + 30;
-                  setTotal((currentTotal) => Math.max(currentTotal, next));
-                  return next;
-                });
+                const next = remaining + 30;
+                setRemaining(next);
+                setTotal((currentTotal) => Math.max(currentTotal, next));
               }}
               className="border-k-line-strong bg-k-chip text-k-fg-sub hover:border-k-accent-edge flex size-14 items-center justify-center rounded-2xl border font-mono text-[13px] transition-colors"
             >

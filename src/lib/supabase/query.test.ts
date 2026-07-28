@@ -20,15 +20,15 @@ const UUID = "00000000-0000-0000-0000-000000000000";
 // docs/data-access.md のパターン（entity / response・embed・row 付き match）を
 // 満たす最小のテーブルをここで組み立てる。
 
-const CategorySchema = z.object({ id: z.string().uuid(), name: z.string() });
+const CategorySchema = z.object({ id: z.uuid(), name: z.string() });
 
 const TodoEntitySchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   title: z.string(),
   completed: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
-  category_id: z.string().uuid().nullable(),
+  category_id: z.uuid().nullable(),
 });
 
 const GET_TODOS_QUERY =

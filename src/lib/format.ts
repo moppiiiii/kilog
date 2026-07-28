@@ -44,17 +44,21 @@ export function toDate(iso: string): Date {
   return new Date(`${iso}T00:00:00`);
 }
 
+// Intl のコンストラクタはロケールデータを読み込むので、呼ぶたびに作り直さず
+// モジュール直下で 1 度だけ生成する（ロケール・オプションとも固定のため安全）。
+const JST_DATE = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 /**
  * 今日の日付を JST（Asia/Tokyo）で "YYYY-MM-DD" 返す。
  * toISOString() は UTC 基準なので、日本の午前中はまだ前日になりズレる。
  */
 export function todayIso(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return JST_DATE.format(new Date());
 }
 
 /** ISO 日付（YYYY-MM-DD）に日数を足し引きする。UTC 基準で桁だけ動かす純計算。 */
@@ -64,17 +68,19 @@ export function addDaysIso(iso: string, delta: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+const JST_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Tokyo",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 /**
  * ISO タイムスタンプ → JST の "H:mm"（時は 0 埋めなし。例: "8:30" / "19:00"）。
  * セッション名の自動生成に使う。toISOString() は UTC なので Intl で JST 変換する。
  */
 export function timeHm(iso: string): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Tokyo",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date(iso));
+  const parts = JST_TIME.formatToParts(new Date(iso));
   const hour = parts.find((p) => p.type === "hour")?.value ?? "0";
   const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
   return `${Number(hour)}:${minute}`;

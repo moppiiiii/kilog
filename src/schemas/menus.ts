@@ -25,7 +25,7 @@ export type MenuExercise = z.infer<typeof MenuExerciseSchema>;
 export const MenuKind = z.enum(["training", "meal"]);
 export type MenuKindValue = z.infer<typeof MenuKind>;
 
-export const WorkoutMenuSchema = z.object({
+const WorkoutMenuSchema = z.object({
   id: z.string(),
   kind: MenuKind,
   name: z.string(),
@@ -48,8 +48,8 @@ export const MenusQuery = z.object({
 // ─── Supabase アクセス層（entity / embed 読み取り・操作断片） ─────────────────
 
 export const WorkoutMenuEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
   kind: MenuKind,
   name: z.string(),
   icon: z.string(),
@@ -67,7 +67,7 @@ export const GET_MENUS_QUERY =
   "exercises:menu_exercises(id, position, exercise_id, target_sets, target_reps, rest_sec, exercise:exercises(id, name))";
 
 const MenuExerciseReadSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   position: z.coerce.number().int(),
   exercise_id: z.string(),
   target_sets: z.coerce.number().int(),
@@ -77,7 +77,7 @@ const MenuExerciseReadSchema = z.object({
 });
 
 export const MenuReadSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   kind: MenuKind,
   name: z.string(),
   icon: z.string(),
@@ -90,9 +90,9 @@ export const MenuReadSchema = z.object({
 export type MenuRead = z.infer<typeof MenuReadSchema>;
 
 export const MenuExerciseEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  menu_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
+  menu_id: z.uuid(),
   exercise_id: z.string(),
   position: z.coerce.number().int(),
   target_sets: z.coerce.number().int(),
@@ -106,7 +106,7 @@ export type MenuExerciseRow = z.infer<typeof MenuExerciseEntitySchema>;
 // mutation は RETURNING なし（void）。行 id はクライアントで uuid を生成して渡す。
 
 export const CreateMenuInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   kind: MenuKind,
   name: z.string().min(1, "メニュー名を入力してください"),
   icon: z.string().default("🏋️"),
@@ -119,7 +119,7 @@ export type CreateMenuValue = z.infer<typeof CreateMenuInput>;
 
 /** メニュー本体の更新。id で対象を絞り、送った項目だけ差し替える。 */
 export const UpdateMenuInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string().min(1).optional(),
   icon: z.string().optional(),
   parts: z.array(z.string()).optional(),
@@ -128,11 +128,11 @@ export const UpdateMenuInput = z.object({
 });
 export type UpdateMenuValue = z.infer<typeof UpdateMenuInput>;
 
-export const MenuIdInput = z.object({ id: z.string().uuid() });
+export const MenuIdInput = z.object({ id: z.uuid() });
 
 export const AddMenuExerciseInput = z.object({
-  id: z.string().uuid(),
-  menu_id: z.string().uuid(),
+  id: z.uuid(),
+  menu_id: z.uuid(),
   exercise_id: z.string(),
   position: z.number().int().default(0),
   target_sets: z.number().int().positive().default(3),
@@ -143,7 +143,7 @@ export type AddMenuExerciseValue = z.infer<typeof AddMenuExerciseInput>;
 
 /** メニュー内の 1 種目の既定値（セット数・レップ・休憩）の更新。 */
 export const UpdateMenuExerciseInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   position: z.number().int().optional(),
   target_sets: z.number().int().positive().optional(),
   target_reps: z.number().int().positive().optional(),
@@ -151,10 +151,10 @@ export const UpdateMenuExerciseInput = z.object({
 });
 export type UpdateMenuExerciseValue = z.infer<typeof UpdateMenuExerciseInput>;
 
-export const MenuExerciseIdInput = z.object({ id: z.string().uuid() });
+export const MenuExerciseIdInput = z.object({ id: z.uuid() });
 
 /** メニューから当日セッションを起こす（10A →記録画面）。 */
-export const StartMenuSessionInput = z.object({ menuId: z.string().uuid() });
+export const StartMenuSessionInput = z.object({ menuId: z.uuid() });
 export type StartMenuSessionValue = z.infer<typeof StartMenuSessionInput>;
 
 export const menusSchema = createSupabaseSchema({

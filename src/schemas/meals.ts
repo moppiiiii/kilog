@@ -47,7 +47,7 @@ export const FoodSuggestionSchema = z.object({
 });
 export type FoodSuggestion = z.infer<typeof FoodSuggestionSchema>;
 
-export const DailyMealsSchema = z.object({
+const DailyMealsSchema = z.object({
   date: z.string(),
   targetKcal: z.number().int().positive(),
   targetMacros: MacrosSchema,
@@ -70,8 +70,8 @@ export const GET_FOODS_QUERY =
   "id, owner_id, tag, name, default_qty, kcal, protein_g, fat_g, carb_g, is_suggestion";
 
 export const FoodEntitySchema = z.object({
-  id: z.string().uuid(),
-  owner_id: z.string().uuid().nullable(),
+  id: z.uuid(),
+  owner_id: z.uuid().nullable(),
   tag: z.string(),
   name: z.string(),
   default_qty: z.string(),
@@ -102,11 +102,11 @@ export const GET_MEAL_ENTRIES_QUERY =
   "id, date, slot, food_id, name, qty, kcal, protein_g, fat_g, carb_g, position";
 
 export const MealEntryEntitySchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  id: z.uuid(),
+  user_id: z.uuid(),
   date: z.string(),
   slot: MealSlot,
-  food_id: z.string().uuid().nullable(),
+  food_id: z.uuid().nullable(),
   name: z.string(),
   qty: z.string(),
   kcal: z.coerce.number(),
@@ -156,15 +156,15 @@ export const AddMealEntryInput = z.object({
   protein_g: z.number().nonnegative().default(0),
   fat_g: z.number().nonnegative().default(0),
   carb_g: z.number().nonnegative().default(0),
-  food_id: z.string().uuid().nullable().default(null),
+  food_id: z.uuid().nullable().default(null),
   position: z.number().int().default(0),
 });
 
-export const RemoveMealEntryInput = z.object({ id: z.string().uuid() });
+export const RemoveMealEntryInput = z.object({ id: z.uuid() });
 
 /** 記録済み 1 品の修正。id で対象を絞り、送った項目だけ差し替える。 */
 export const UpdateMealEntryInput = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string().min(1).optional(),
   qty: z.string().optional(),
   kcal: z.number().nonnegative().optional(),

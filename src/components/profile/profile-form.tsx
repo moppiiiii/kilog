@@ -111,10 +111,7 @@ function FieldError({
   if (errors.length === 0) return null;
   return (
     <p className="text-k-danger text-xs" role="alert">
-      {errors
-        .map((e) => e?.message)
-        .filter(Boolean)
-        .join(", ")}
+      {errors.flatMap((e) => (e?.message ? [e.message] : [])).join(", ")}
     </p>
   );
 }

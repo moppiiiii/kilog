@@ -1,18 +1,11 @@
 import { Cookie, type LucideIcon, Moon, Sun, Sunrise } from "lucide-react";
 
+import { SLOT_COLOR } from "@/components/meals/slot-color";
 import { cn } from "@/lib/utils";
 import type { MealSlotValue } from "@/schemas/meals";
 
 // 食事スロットのバッジ（色＋アイコン）。meal-logger とダッシュボードで共有し、
 // 朝/昼/間/夜 の見た目を 1 か所に集約して統一する。
-
-/** スロットの配色（バッジ・積み上げバー等で共有）。 */
-export const SLOT_COLOR: Record<MealSlotValue, string> = {
-  breakfast: "bg-k-warn",
-  lunch: "bg-k-accent",
-  snack: "bg-k-success",
-  dinner: "bg-k-violet",
-};
 
 const SLOT_ICON: Record<MealSlotValue, LucideIcon> = {
   breakfast: Sunrise,

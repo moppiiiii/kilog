@@ -33,36 +33,42 @@ export const getDashboard = createServerFn()
   .handler(async ({ data }): Promise<Dashboard> => {
     const $supabase = await $supabaseServer();
     const date = todayIso();
-    const profile = await loadProfile($supabase);
-    const sessions = await loadSessions();
+    // グラフは選択期間のローリング窓（古い順）。
+    const from = addDaysIso(date, -(RANGE_DAYS[data.range] - 1));
 
+    // 5 本とも互いに独立なので同時に投げる（直列だと往復が積み上がるだけ）。
     // KPI（最新体重・前回比）はグラフの期間に依存させないので、常に直近 2 件から出す。
-    const latestTwo = (
-      await $supabase("@select/body_measurements", {
+    const [
+      profile,
+      sessions,
+      latestTwoResult,
+      measurementsResult,
+      entriesResult,
+    ] = await Promise.all([
+      loadProfile($supabase),
+      loadSessions($supabase),
+      $supabase("@select/body_measurements", {
         filter: (q) => q.order("date", { ascending: false }).limit(2),
-      })
-    ).unwrapOr([]);
+      }),
+      $supabase("@select/body_measurements", {
+        filter: (q) => q.gte("date", from).order("date"),
+      }),
+      $supabase("@select/meal_entries", {
+        filter: (q) => q.eq("date", date).order("position"),
+      }),
+    ]);
+
+    const latestTwo = latestTwoResult.unwrapOr([]);
     const weightKg = latestTwo[0]?.weight_kg ?? 0;
     const weightDeltaKg =
       latestTwo[1] != null ? round1(weightKg - latestTwo[1].weight_kg) : 0;
 
-    // グラフは選択期間のローリング窓（古い順）。
-    const from = addDaysIso(date, -(RANGE_DAYS[data.range] - 1));
-    const measurements = (
-      await $supabase("@select/body_measurements", {
-        filter: (q) => q.gte("date", from).order("date"),
-      })
-    ).unwrapOr([]);
-    const weightSeries = measurements.map((row) => ({
+    const weightSeries = measurementsResult.unwrapOr([]).map((row) => ({
       date: row.date,
       weightKg: row.weight_kg,
     }));
 
-    const entries = (
-      await $supabase("@select/meal_entries", {
-        filter: (q) => q.eq("date", date).order("position"),
-      })
-    ).unwrapOr([]);
+    const entries = entriesResult.unwrapOr([]);
     const kcal = Math.round(
       entries.reduce((sum, entry) => sum + entry.kcal, 0),
     );

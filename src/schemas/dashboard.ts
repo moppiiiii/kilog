@@ -35,7 +35,7 @@ export const DashboardQuery = z.object({
 });
 export type DashboardQueryInput = z.infer<typeof DashboardQuery>;
 
-export const DashboardSchema = z.object({
+const DashboardSchema = z.object({
   date: z.string(),
   weightKg: z.number(),
   weightDeltaKg: z.number(),

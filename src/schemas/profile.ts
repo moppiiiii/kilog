@@ -11,7 +11,7 @@ export const GET_PROFILE_QUERY =
   "user_id, display_name, height_cm, target_weight_kg, target_kcal, target_protein_g, target_fat_g, target_carb_g";
 
 export const ProfileEntitySchema = z.object({
-  user_id: z.string().uuid(),
+  user_id: z.uuid(),
   display_name: z.string().nullable(),
   height_cm: z.coerce.number().nullable(),
   target_weight_kg: z.coerce.number().nullable(),

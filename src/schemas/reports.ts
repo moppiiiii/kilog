@@ -21,7 +21,7 @@ export const PersonalBestSchema = z.object({
 });
 export type PersonalBest = z.infer<typeof PersonalBestSchema>;
 
-export const ReportSchema = z.object({
+const ReportSchema = z.object({
   /** 表示用の期間ラベル（例: "2026年 7月" / "7/21–7/27" / "2026年"）。 */
   periodLabel: z.string(),
   trainingDays: z.number().int(),

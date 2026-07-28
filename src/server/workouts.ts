@@ -78,7 +78,7 @@ const EMPTY_SESSION: WorkoutSession = {
  */
 export const getActiveSession = createServerFn().handler(
   async (): Promise<WorkoutSession> => {
-    const all = await loadSessions();
+    const all = await loadSessions(await $supabaseServer());
     const today = todayIso();
     const active = all.find(
       (session) => session.date === today && session.ended_at === null,
@@ -97,7 +97,7 @@ export const activeSessionQueryOptions = () =>
 export const getWorkoutSession = createServerFn()
   .validator(SessionIdInput)
   .handler(async ({ data }): Promise<WorkoutSession> => {
-    const all = await loadSessions();
+    const all = await loadSessions(await $supabaseServer());
     const session = all.find((candidate) => candidate.id === data.id);
     if (!session) throw notFound();
     return buildSession(session, findPrevious(all, session));
@@ -248,8 +248,11 @@ export const getLogFeed = createServerFn()
   .handler(async ({ data }): Promise<LogFeed> => {
     const { kind, period, page, q, part } = data;
     const $supabase = await $supabaseServer();
-    const sessions = await loadSessions();
-    const entries = await loadMealEntries();
+    // セッションと食事は互いに独立なので同時に投げる。
+    const [sessions, entries] = await Promise.all([
+      loadSessions($supabase),
+      loadMealEntries($supabase),
+    ]);
     const matches = makeMatcher(q);
     /** 部位フィルタ。食事行は部位を持たないので、指定時は自動的に除外される。 */
     const inPart = (parts: string[]) => part === "" || parts.includes(part);
@@ -339,12 +342,11 @@ export const getLogFeed = createServerFn()
     // 部位を選ぶと食事は対象外になるので、平均 kcal もその指定に従う。
     const periodMealKcals =
       part === ""
-        ? [...mealsByDate.entries()]
-            .filter(
-              ([date]) =>
-                (!from || date >= from) && matches(mealTexts.get(date) ?? ""),
-            )
-            .map(([, list]) => list.reduce((sum, entry) => sum + entry.kcal, 0))
+        ? [...mealsByDate.entries()].flatMap(([date, list]) =>
+            (!from || date >= from) && matches(mealTexts.get(date) ?? "")
+              ? [list.reduce((sum, entry) => sum + entry.kcal, 0)]
+              : [],
+          )
         : [];
     const avgKcal = periodMealKcals.length
       ? Math.round(
@@ -398,7 +400,7 @@ export const logFeedQueryOptions = (query: LogFeedQueryInput) =>
 
 export const getCopySources = createServerFn().handler(
   async (): Promise<CopySource[]> => {
-    const sessions = await loadSessions();
+    const sessions = await loadSessions(await $supabaseServer());
     return sessions.slice(0, 6).map((session) => ({
       id: session.id,
       name: session.title,
@@ -420,11 +422,11 @@ export const getCopySources = createServerFn().handler(
 export const copySession = createServerFn({ method: "POST" })
   .validator(CopySessionInput)
   .handler(async ({ data }): Promise<{ id: string }> => {
-    const sessions = await loadSessions();
+    const $supabase = await $supabaseServer();
+    const sessions = await loadSessions($supabase);
     const source = sessions.find((candidate) => candidate.id === data.sourceId);
     if (!source) throw notFound();
 
-    const $supabase = await $supabaseServer();
     const id = crypto.randomUUID();
     const startedAt = new Date().toISOString();
 
@@ -505,7 +507,7 @@ const EMPTY_REST: RestContext = {
 
 export const getRestContext = createServerFn().handler(
   async (): Promise<RestContext> => {
-    const all = await loadSessions();
+    const all = await loadSessions(await $supabaseServer());
     const active = all[0];
     if (!active) return EMPTY_REST;
     const session = buildSession(active, findPrevious(all, active));

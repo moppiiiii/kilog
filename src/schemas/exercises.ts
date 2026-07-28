@@ -19,7 +19,7 @@ export const ExerciseEntitySchema = z.object({
   part: z.string(),
   is_bodyweight: z.boolean(),
   is_cardio: z.boolean(),
-  owner_id: z.string().uuid().nullable(),
+  owner_id: z.uuid().nullable(),
   created_at: z.string(),
 });
 export type ExerciseRow = z.infer<typeof ExerciseEntitySchema>;
@@ -49,7 +49,7 @@ export type CreateExerciseValue = z.infer<typeof CreateExerciseInput>;
 
 /** @insert が受け取る行（owner_id 付き）。serverFn 側で CreateExerciseInput に owner_id を足す。 */
 const InsertExerciseInput = CreateExerciseInput.extend({
-  owner_id: z.string().uuid(),
+  owner_id: z.uuid(),
 });
 
 /** カスタム種目の削除対象。共通マスタ（owner_id=null）は RLS で本人が消せない前提。 */

@@ -250,6 +250,7 @@ export function SessionDetail({ session }: { session: WorkoutSession }) {
                   className="h-[120px]"
                   gapClassName="gap-2"
                   bars={strength.map((exercise) => ({
+                    id: exercise.id,
                     height: (exerciseVolume(exercise) / maxVolume) * 100,
                     className:
                       "bg-[linear-gradient(180deg,#5b8bff,#2f4dad)] rounded-t-[4px]",

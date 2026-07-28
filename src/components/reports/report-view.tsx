@@ -11,10 +11,10 @@ import {
   PanelTitle,
   SectionTitle,
   SegmentedGroup,
-  segmentClass,
   SplitBody,
   TopBar,
 } from "@/components/kirog/console";
+import { segmentClass } from "@/components/kirog/segment-class";
 import { WeightTrend } from "@/components/kirog/weight-trend";
 import { num, signed, signedPct } from "@/lib/format";
 import { macroKcal, macroShare } from "@/lib/metrics";

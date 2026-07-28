@@ -43,15 +43,19 @@ export const getDailyMeals = createServerFn()
     const groups: MealGroup[] = MealSlot.options.map((slot: MealSlotValue) => ({
       slot,
       name: SLOT_META[slot].name,
-      items: entries
-        .filter((entry) => entry.slot === slot)
-        .map((entry) => ({
-          id: entry.id,
-          name: entry.name,
-          qty: entry.qty,
-          kcal: entry.kcal,
-          macros: { p: entry.protein_g, f: entry.fat_g, c: entry.carb_g },
-        })),
+      items: entries.flatMap((entry) =>
+        entry.slot === slot
+          ? [
+              {
+                id: entry.id,
+                name: entry.name,
+                qty: entry.qty,
+                kcal: entry.kcal,
+                macros: { p: entry.protein_g, f: entry.fat_g, c: entry.carb_g },
+              },
+            ]
+          : [],
+      ),
     }));
 
     const suggestions: FoodSuggestion[] = suggestionRows.map((food) => ({
