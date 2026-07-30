@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import type { QueryKey } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type * as React from "react";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import {
   TopBar,
 } from "@/components/kirog/console";
 import { DailyTotalsPane } from "@/components/meals/daily-totals-pane";
+import { FoodNameCombobox } from "@/components/meals/food-name-combobox";
 import { SlotBadge } from "@/components/meals/slot-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,12 +28,14 @@ import { groupKcal, groupMacros } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type {
   DailyMeals,
+  FoodCandidate,
   FoodSuggestion,
   ManualMealEntryValue,
   MealItem,
   MealSlotValue,
 } from "@/schemas/meals";
 import { ManualMealEntryInput, ManualMealFormSchema } from "@/schemas/meals";
+import { foodCandidatesQueryOptions } from "@/server/meals";
 
 // 5A: 食事の記録画面。食品検索と PFC 集計。
 
@@ -44,6 +48,8 @@ export function MealLogger({
   queryKey?: QueryKey;
 }) {
   const navigate = useNavigate();
+  // 入力補完の候補。日付に依らないので日移動では引き直さない（loader で事前取得済み）。
+  const { data: candidates } = useSuspenseQuery(foodCandidatesQueryOptions());
   const addEntry = useAddMealEntry(queryKey);
   const updateEntry = useUpdateMealEntry(queryKey);
   const removeEntry = useRemoveMealEntry(queryKey);
@@ -139,6 +145,7 @@ export function MealLogger({
                       <MonoLabel className="mb-2.5">1品を修正</MonoLabel>
                       <ManualEntryForm
                         submitLabel="保存"
+                        candidates={candidates}
                         initial={toFormValues(item)}
                         disabled={updateEntry.isPending}
                         onSubmitValue={(value) => {
@@ -206,6 +213,7 @@ export function MealLogger({
 
                       <ManualEntryForm
                         submitLabel={`${group.name}に追加`}
+                        candidates={candidates}
                         disabled={addEntry.isPending}
                         onSubmitValue={(value) => addManual(group.slot, value)}
                       />
@@ -348,12 +356,15 @@ function toFormValues(item: MealItem): ManualFormValues {
  */
 function ManualEntryForm({
   submitLabel,
+  candidates,
   disabled,
   initial,
   onSubmitValue,
   onCancel,
 }: {
   submitLabel: string;
+  /** 食品名の補完候補（過去の記録）。 */
+  candidates: FoodCandidate[];
   disabled?: boolean;
   initial?: ManualFormValues;
   onSubmitValue: (value: ManualMealEntryValue) => void;
@@ -370,6 +381,16 @@ function ManualEntryForm({
     },
   });
 
+  // 過去の記録から選んだら、量・kcal・PFC まで一気に埋める（数値欄は文字列で保持）。
+  const applyCandidate = (candidate: FoodCandidate) => {
+    form.setFieldValue("name", candidate.name);
+    form.setFieldValue("qty", candidate.qty);
+    form.setFieldValue("kcal", String(candidate.kcal));
+    form.setFieldValue("protein_g", String(candidate.macros.p));
+    form.setFieldValue("fat_g", String(candidate.macros.f));
+    form.setFieldValue("carb_g", String(candidate.macros.c));
+  };
+
   return (
     <form
       onSubmit={(e) => {
@@ -383,13 +404,13 @@ function ManualEntryForm({
         <form.Field name="name">
           {(field) => (
             <div>
-              <Input
+              <FoodNameCombobox
                 value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
+                candidates={candidates}
+                invalid={field.state.meta.errors.length > 0}
+                onValueChange={(value) => field.handleChange(value)}
                 onBlur={field.handleBlur}
-                placeholder="食品名"
-                aria-label="食品名"
-                aria-invalid={field.state.meta.errors.length > 0}
+                onSelect={applyCandidate}
                 className={FIELD_CLASS}
               />
               <FieldError errors={field.state.meta.errors} />

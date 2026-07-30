@@ -1,12 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
+import { foldFoodCandidates } from "@/lib/food-candidates";
 import { todayIso } from "@/lib/format";
 import { $supabaseServer } from "@/lib/supabase/server";
 import {
   AddMealEntryInput,
   type DailyMeals,
   DailyMealsQuery,
+  FOOD_CANDIDATE_SCAN_LIMIT,
+  type FoodCandidate,
   type FoodSuggestion,
   type MealGroup,
   MealSlot,
@@ -80,6 +83,39 @@ export const dailyMealsQueryOptions = (date?: string) =>
   queryOptions({
     queryKey: ["meals", date ?? "today"],
     queryFn: () => getDailyMeals({ data: { date } }),
+  });
+
+// ─── 入力補完の候補 ────────────────────────────────────────────────────────
+// 直近の記録を新しい順に読み、食品名で畳んで候補にする。日付に依存しないので
+// 日次データとはクエリを分け、1 回の取得を全日で使い回す（日移動で引き直さない）。
+
+export const getFoodCandidates = createServerFn().handler(
+  async (): Promise<FoodCandidate[]> => {
+    const $supabase = await $supabaseServer();
+
+    const entries = (
+      await $supabase("@select/meal_entries", {
+        filter: (q) =>
+          q
+            .order("date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(FOOD_CANDIDATE_SCAN_LIMIT),
+      })
+    ).unwrapOr([]);
+
+    return foldFoodCandidates(entries);
+  },
+);
+
+/**
+ * 候補は履歴の要約なので数分古くても困らない。staleTime を長めに取り、
+ * 追加時は hooks 側でキャッシュを直接更新して再取得を避ける。
+ */
+export const foodCandidatesQueryOptions = () =>
+  queryOptions({
+    queryKey: ["food-candidates"],
+    queryFn: () => getFoodCandidates(),
+    staleTime: 5 * 60 * 1000,
   });
 
 // ─── 記録の書き込み（mutation） ──────────────────────────────────────────────

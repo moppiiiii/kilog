@@ -47,6 +47,26 @@ export const FoodSuggestionSchema = z.object({
 });
 export type FoodSuggestion = z.infer<typeof FoodSuggestionSchema>;
 
+/**
+ * 入力補完の候補 1 件。過去の記録（meal_entries）を食品名でまとめたもの。
+ * kcal / PFC は「その名前で最後に記録した値」を採る（内容を直したら候補も追随する）。
+ */
+export const FoodCandidateSchema = z.object({
+  name: z.string(),
+  qty: z.string(),
+  kcal: z.number().nonnegative(),
+  macros: MacrosSchema,
+  /** 過去に記録した回数。候補の並び（よく食べる順）に使う。 */
+  count: z.number().int().positive(),
+});
+export type FoodCandidate = z.infer<typeof FoodCandidateSchema>;
+
+/**
+ * 候補づくりで遡る記録の件数（名前で畳む前の行数の上限）。
+ * 候補は 1 回だけ取得して絞り込みはクライアント側で行うため、打鍵ごとの通信は発生しない。
+ */
+export const FOOD_CANDIDATE_SCAN_LIMIT = 300;
+
 const DailyMealsSchema = z.object({
   date: z.string(),
   targetKcal: z.number().int().positive(),

@@ -4,8 +4,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import type { AddMealEntryValue, DailyMeals } from "@/schemas/meals";
-import { addMealEntry, dailyMealsQueryOptions } from "@/server/meals";
+import { bumpFoodCandidate } from "@/lib/food-candidates";
+import type {
+  AddMealEntryValue,
+  DailyMeals,
+  FoodCandidate,
+} from "@/schemas/meals";
+import {
+  addMealEntry,
+  dailyMealsQueryOptions,
+  foodCandidatesQueryOptions,
+} from "@/server/meals";
 
 // 食品を追加する。onMutate で該当スロットに即時反映し、失敗で巻き戻す。
 // queryKey は購読中の日（当日 or /meals/$date の過去日）を指す。既定は当日。
@@ -51,6 +60,23 @@ export function useAddMealEntry(
     },
     onError: (_e, _v, context) =>
       queryClient.setQueryData(queryKey, context?.previous),
+    // 入力補完の候補は書き込みが通ってから更新する（巻き戻しが要らない）。
+    // 300 件の再取得を避けるため invalidate ではなくキャッシュを直接書き換える。
+    onSuccess: (_d, data) =>
+      queryClient.setQueryData<FoodCandidate[]>(
+        foodCandidatesQueryOptions().queryKey,
+        (old) =>
+          old
+            ? bumpFoodCandidate(old, {
+                name: data.name,
+                qty: data.qty ?? "",
+                kcal: data.kcal ?? 0,
+                protein_g: data.protein_g ?? 0,
+                fat_g: data.fat_g ?? 0,
+                carb_g: data.carb_g ?? 0,
+              })
+            : old,
+      ),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });
       // 履歴フィード（["workouts"...]）とダッシュボードも当日/対象日の食事を集計する。
