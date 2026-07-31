@@ -25,6 +25,7 @@ import { Route as AuthedLogTimerRouteImport } from './routes/_authed/log.timer'
 import { Route as AuthedLogCopyRouteImport } from './routes/_authed/log.copy'
 import { Route as AuthedLogSessionIdRouteImport } from './routes/_authed/log.$sessionId'
 import { Route as AuthedHistorySessionIdRouteImport } from './routes/_authed/history.$sessionId'
+import { Route as AuthedAccountTargetsRouteImport } from './routes/_authed/account_.targets'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -105,6 +106,11 @@ const AuthedHistorySessionIdRoute = AuthedHistorySessionIdRouteImport.update({
   path: '/history/$sessionId',
   getParentRoute: () => AuthedRouteRoute,
 } as any)
+const AuthedAccountTargetsRoute = AuthedAccountTargetsRouteImport.update({
+  id: '/account_/targets',
+  path: '/account/targets',
+  getParentRoute: () => AuthedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthedAccountRoute
   '/body': typeof AuthedBodyRoute
   '/menus': typeof AuthedMenusRoute
+  '/account/targets': typeof AuthedAccountTargetsRoute
   '/history/$sessionId': typeof AuthedHistorySessionIdRoute
   '/log/$sessionId': typeof AuthedLogSessionIdRoute
   '/log/copy': typeof AuthedLogCopyRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/body': typeof AuthedBodyRoute
   '/menus': typeof AuthedMenusRoute
   '/': typeof AuthedIndexRoute
+  '/account/targets': typeof AuthedAccountTargetsRoute
   '/history/$sessionId': typeof AuthedHistorySessionIdRoute
   '/log/$sessionId': typeof AuthedLogSessionIdRoute
   '/log/copy': typeof AuthedLogCopyRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/_authed/body': typeof AuthedBodyRoute
   '/_authed/menus': typeof AuthedMenusRoute
   '/_authed/': typeof AuthedIndexRoute
+  '/_authed/account_/targets': typeof AuthedAccountTargetsRoute
   '/_authed/history/$sessionId': typeof AuthedHistorySessionIdRoute
   '/_authed/log/$sessionId': typeof AuthedLogSessionIdRoute
   '/_authed/log/copy': typeof AuthedLogCopyRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/body'
     | '/menus'
+    | '/account/targets'
     | '/history/$sessionId'
     | '/log/$sessionId'
     | '/log/copy'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
     | '/body'
     | '/menus'
     | '/'
+    | '/account/targets'
     | '/history/$sessionId'
     | '/log/$sessionId'
     | '/log/copy'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/_authed/body'
     | '/_authed/menus'
     | '/_authed/'
+    | '/_authed/account_/targets'
     | '/_authed/history/$sessionId'
     | '/_authed/log/$sessionId'
     | '/_authed/log/copy'
@@ -333,6 +345,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedHistorySessionIdRouteImport
       parentRoute: typeof AuthedRouteRoute
     }
+    '/_authed/account_/targets': {
+      id: '/_authed/account_/targets'
+      path: '/account/targets'
+      fullPath: '/account/targets'
+      preLoaderRoute: typeof AuthedAccountTargetsRouteImport
+      parentRoute: typeof AuthedRouteRoute
+    }
   }
 }
 
@@ -341,6 +360,7 @@ interface AuthedRouteRouteChildren {
   AuthedBodyRoute: typeof AuthedBodyRoute
   AuthedMenusRoute: typeof AuthedMenusRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
+  AuthedAccountTargetsRoute: typeof AuthedAccountTargetsRoute
   AuthedHistorySessionIdRoute: typeof AuthedHistorySessionIdRoute
   AuthedLogSessionIdRoute: typeof AuthedLogSessionIdRoute
   AuthedLogCopyRoute: typeof AuthedLogCopyRoute
@@ -358,6 +378,7 @@ const AuthedRouteRouteChildren: AuthedRouteRouteChildren = {
   AuthedBodyRoute: AuthedBodyRoute,
   AuthedMenusRoute: AuthedMenusRoute,
   AuthedIndexRoute: AuthedIndexRoute,
+  AuthedAccountTargetsRoute: AuthedAccountTargetsRoute,
   AuthedHistorySessionIdRoute: AuthedHistorySessionIdRoute,
   AuthedLogSessionIdRoute: AuthedLogSessionIdRoute,
   AuthedLogCopyRoute: AuthedLogCopyRoute,

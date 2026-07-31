@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
+import { katchMcArdleBmr } from "@/lib/nutrition-targets";
 import { $supabaseServer } from "@/lib/supabase/server";
 import {
   AddBodyMeasurementInput,
@@ -42,8 +43,8 @@ function toMeasurement(
     bodyFatPct,
     muscleKg: row.muscle_kg ?? round1(leanKg - NON_MUSCLE_LEAN_KG),
     bmi: heightM > 0 ? round1(weightKg / (heightM * heightM)) : 0,
-    // Katch-McArdle（除脂肪体重ベース）。
-    bmrKcal: Math.round(370 + 21.6 * leanKg),
+    // Katch-McArdle（除脂肪体重ベース）。目標値の計算ページと同じ式を使う。
+    bmrKcal: Math.round(katchMcArdleBmr(leanKg)),
   };
 }
 

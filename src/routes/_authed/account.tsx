@@ -47,6 +47,21 @@ function AccountPage() {
               の計算に、目標値はダッシュボード・食事・レポートの目標表示に使われます。
             </p>
             <ProfileForm profile={profile} />
+            {/* 目標値を手で決められない人向けの導線。計算して同じ欄へ書き戻す。 */}
+            <Link
+              to="/account/targets"
+              className="border-k-line bg-k-raised hover:border-k-accent-edge mt-5 flex max-w-md items-center gap-3 rounded-[10px] border px-3.5 py-3 transition-colors"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">
+                  目標カロリーと PFC を計算する
+                </span>
+                <span className="text-k-fg-dim mt-0.5 block text-[11px]">
+                  身長・体重・体脂肪率から算出し、PFC の考え方も解説します
+                </span>
+              </span>
+              <span className="text-k-accent shrink-0 text-sm">▸</span>
+            </Link>
           </div>
 
           <Divider />
